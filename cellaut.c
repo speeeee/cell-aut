@@ -29,9 +29,9 @@ typedef struct { CAut *curr; CAut *next; } SwapCAut;
 void swap(SwapCAut *cc) { /* optionally set all c.next to 0 after swap. */
   CAut *t = cc->curr; cc->curr = cc->next; cc->next = t; }
 
-struct Cell { int state; };
-Cell cell(int state) { (Cell) { state }; }
-typedef struct { void *data; } GCell;
+struct Cell { int state; void *data; /* data is for non-integer states */};
+Cell cell(int state) { return (Cell) { state, NULL }; }
+//typedef struct { void *data; } GCell;
 
 CAut c_aut(Cell *cells, int *fra, int rank, CFun f) {
   return (CAut) { cells, fra, rank, f }; }
@@ -56,7 +56,7 @@ CAut copy_c(CAut c) { CAut n; n.cells = malloc(len(c)*sizeof(Cell));
   n.fra = malloc(c.rank*sizeof(Cell)); memcpy(n.fra,c.fra,c.rank*sizeof(Cell));
   n.rank = c.rank; n.f = c.f; return n; }
 
-int get2(CAut c, int x, int y) { index2(c,x,y).state; }
+int get2(CAut c, int x, int y) { return index2(c,x,y).state; }
 
 Cell id(Cell a, CAut c, int x, int y) { return a; }
 Cell f0(Cell a, CAut c, int x, int y) { return cell(!a.state); }
