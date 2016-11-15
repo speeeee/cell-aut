@@ -15,7 +15,7 @@
 
 //#include "glob_structs.h"
 
-#define SZ (100)
+#define SZ (500)
 
 #define SAMPLE_RATE (44100)
 #define FPB (64)
@@ -24,6 +24,10 @@ typedef struct CAut CAut;
 typedef struct Cell Cell;
 typedef Cell (*CFun)(Cell,CAut,int,int);
 struct CAut { Cell *cells; int *fra; int rank; CFun f; };
+// more efficient 1-generation lookback.
+typedef struct { CAut *curr; CAut *next; } SwapCAut;
+void swap(SwapCAut *cc) { /* optionally set all c.next to 0 after swap. */
+  CAut *t = cc->curr; cc->curr = cc->next; cc->next = t; }
 
 struct Cell { int state; };
 Cell cell(int state) { (Cell) { state }; }
@@ -62,11 +66,10 @@ Cell conway(Cell a, CAut c, int x, int y) {
   if(a.state) { return cell(neighbors>1&&neighbors<4); }
   return cell(neighbors==3); }
 
-// TODO: make this faster since reallocating every time isn't ideal.
-CAut next_state(CAut c) { CAut n = copy_c(c);
-  for(int i=0;i<len(c);i++) { n.cells[i] = c.f(c.cells[i],c,i%c.fra[0],i/c.fra[0]); } return n; }
-
-CAut c;
+// DONE: make this faster since reallocating every time isn't ideal.
+void next_state2D(CAut *c, CAut *n) {
+  for(int i=0;i<len(*c);i++) {
+    n->cells[i] = c->f(c->cells[i],*c,i%c->fra[0],i/c->fra[0]); } }
 
 const char *ver_v =
   "void main(void) { vec4 v = vec4(gl_Vertex);"
@@ -122,14 +125,14 @@ static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 int any_eq(int a, int *b, int fro, int to) { int i; for(int i=fro;i<to&&b[i]!=a;i++);
   return i>=to?-1:i; }
 
-void paint(GLFWwindow *win) { glLoadIdentity();
+void paint(GLFWwindow *win, CAut *c) { glLoadIdentity();
   glTranslatef(0,0,/*-1.5*/-5);
 
   glColor4f(1.0,0.0,0.0,1.0);
   glBegin(GL_QUADS); 
     //glVertex3f(-0.05,0,0.05); glVertex3f(0.05,0,0.05);
     //glVertex3f(0.05,0.1,0.05); glVertex3f(-0.05,0.1,0.05);
-    d_conway(c,win);
+    d_conway(*c,win);
   glEnd(); }
 
 int pressed(GLFWwindow *win, int k) { return glfwGetKey(win,k)==GLFW_PRESS; }
@@ -165,12 +168,19 @@ int pressed(GLFWwindow *win, int k) { return glfwGetKey(win,k)==GLFW_PRESS; }
      All predicates take a GState as their input. */
 int main(void) {
     srand(time(NULL));    
-
+    CAut *c = malloc(sizeof(CAut)); CAut *bc = malloc(sizeof(CAut));
+    
     Cell *a = malloc(SZ*SZ*sizeof(Cell));
     for(int i=0;i<SZ*SZ;i++) {
       a[i].state = rand()%2; }
     int *fra = malloc(2*sizeof(int)); fra[0] = fra[1] = SZ;
-    c = c_aut(a,fra,2,conway);
+    *c = c_aut(a,fra,2,conway);
+
+    Cell *b = calloc(SZ*SZ,sizeof(Cell));
+    int *bfra = malloc(2*sizeof(int)); bfra[0] = bfra[1] = SZ;
+    *bc = c_aut(b,bfra,2,conway);
+
+    SwapCAut cc = (SwapCAut) { c, bc };
 
     //PaStreamParameters oP; PaStream *stream;
     GLFWwindow* window;
@@ -206,9 +216,9 @@ int main(void) {
     // this is just a temporary time keeper; it is unreliable.
     int time = 0;
     while (!glfwWindowShouldClose(window)) {
-      glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT); paint(window);
+      glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT); paint(window,cc.curr);
       //procInput(&g,window);
-      if(!((time++)%3)) { c = next_state(c); }
+      if(!((time++)%3)) { next_state2D(cc.curr,cc.next); swap(&cc); }
       glfwSwapBuffers(window);
       glfwPollEvents(); }
     error:
