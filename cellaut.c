@@ -60,7 +60,7 @@ Cell conway(Cell a, CAut c, int x, int y) {
   int neighbors = get2(c,x-1,y)+get2(c,x-1,y-1)+get2(c,x,y-1)+get2(c,x+1,y-1)+get2(c,x+1,y)
                 + get2(c,x+1,y+1)+get2(c,x,y+1)+get2(c,x-1,y+1);
   if(a.state) { return cell(neighbors>1&&neighbors<4); }
-  return cell(neighbors>2); }
+  return cell(neighbors==3); }
 
 // TODO: make this faster since reallocating every time isn't ideal.
 CAut next_state(CAut c) { CAut n = copy_c(c);
@@ -168,7 +168,7 @@ int main(void) {
 
     Cell *a = malloc(SZ*SZ*sizeof(Cell));
     for(int i=0;i<SZ*SZ;i++) {
-      a[i].state = rand()%32; }
+      a[i].state = rand()%2; }
     int *fra = malloc(2*sizeof(int)); fra[0] = fra[1] = SZ;
     c = c_aut(a,fra,2,conway);
 
