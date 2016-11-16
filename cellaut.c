@@ -22,8 +22,10 @@
 
 typedef struct CAut CAut;
 typedef struct Cell Cell;
-typedef Cell (*CFun)(Cell,CAut,int,int);
-struct CAut { Cell *cells; int *fra; int rank; CFun f; };
+typedef Cell (*CFun2D)(Cell,CAut,int,int);
+typedef Cell (*CFun)(Cell,CAut,int *);
+struct CAut { Cell *cells; int *fra; int rank;
+              union { CFun f; CFun2D f2d; } fs; };
 // more efficient 1-generation lookback.
 typedef struct { CAut *curr; CAut *next; } SwapCAut;
 void swap(SwapCAut *cc) { /* optionally set all c.next to 0 after swap. */
@@ -38,8 +40,11 @@ int *int_arr(int sz, ...) { int *r = malloc(sz*sizeof(int)); va_list vl; va_star
 
 int prod(int *a, int e) { int p = 1; for(int i=e;e>0;e--) { p*=a[e]; } return p; }
 
-CAut c_aut(Cell *cells, int *fra, int rank, CFun f) {
-  return (CAut) { cells, fra, rank, f }; }
+CAut c_aut2D(Cell *cells, int *fra, int rank, CFun2D f2d) { CAut r;
+  r.cells = cells; r.fra = fra; r.rank = rank; r.fs.f2d = f2d; return r; }
+CAut c_aut(Cell *cells, int *fra, int rank, CFun f) { CAut r;
+  r.cells = cells; r.fra = fra; r.rank = rank; r.fs.f = f; return r; }
+  
 int len(CAut c) { int s = 1; for(int i=0;i<c.rank;i++) { s*=c.fra[i]; } return s; }
 // TODO: generalize to all dimensions: (xm)(1)+(ym)(fra[0])+(zm)(fra[1]*fra[0])+ ...
 Cell index2(CAut a, int x, int y) { int xm = x%a.fra[0]; int ym = y%a.fra[1];
@@ -63,7 +68,7 @@ void free_c_aut(CAut c) { free(c.cells); free(c.fra); }
 // does not copy data; only frame.
 CAut copy_c(CAut c) { CAut n; n.cells = malloc(len(c)*sizeof(Cell));
   n.fra = malloc(c.rank*sizeof(Cell)); memcpy(n.fra,c.fra,c.rank*sizeof(Cell));
-  n.rank = c.rank; n.f = c.f; return n; }
+  n.rank = c.rank; n.fs = c.fs; return n; }
 
 int get2(CAut c, int x, int y) { return index2(c,x,y).state; }
 int get(CAut c, ...) { va_list vl; va_start(vl,c); int *coords = malloc(c.rank*sizeof(int));
@@ -90,12 +95,12 @@ Cell conway_g(Cell a, CAut c, int *co) {
 //          ,i%(c->fra[2]*c->fra[1]*c->fra[0])/(c->fra[1]*c->fra[0]))
 void next_state2D(CAut *c, CAut *n) {
   for(int i=0;i<len(*c);i++) {
-    n->cells[i] = c->f(c->cells[i],*c,i%c->fra[0],i/c->fra[0]); } }
+    n->cells[i] = c->fs.f2d(c->cells[i],*c,i%c->fra[0],i/c->fra[0]); } }
 // TODO: test this.
-/*void next_state(CAut *c, CAut *n) { int *coords = malloc(c->rank*sizeof(int));
+void next_state(CAut *c, CAut *n) { int *coords = malloc(c->rank*sizeof(int));
   for(int i=0;i<len(*c);i++) {
     for(int q=0;q<c->rank;q++) { coords[q] = i%prod(c->fra,q+1)/prod(c->fra,q); }
-    n->cells[i] = c->f(c->cells[i],*c,coords); } free(coords); }*/
+    n->cells[i] = c->fs.f(c->cells[i],*c,coords); } free(coords); }
 
 const char *ver_v =
   "void main(void) { vec4 v = vec4(gl_Vertex);"
@@ -200,11 +205,11 @@ int main(void) {
     for(int i=0;i<SZ*SZ;i++) {
       a[i].state = rand()%2; }
     int *fra = malloc(2*sizeof(int)); fra[0] = fra[1] = SZ;
-    *c = c_aut(a,fra,2,conway);
+    *c = c_aut2D(a,fra,2,conway);
 
     Cell *b = calloc(SZ*SZ,sizeof(Cell));
     int *bfra = malloc(2*sizeof(int)); bfra[0] = bfra[1] = SZ;
-    *bc = c_aut(b,bfra,2,conway);
+    *bc = c_aut2D(b,bfra,2,conway);
 
     SwapCAut cc = (SwapCAut) { c, bc };
 
