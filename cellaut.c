@@ -15,7 +15,7 @@
 
 //#include "glob_structs.h"
 
-#define SZ (500)
+#define SZ (100)
 
 #define SAMPLE_RATE (44100)
 #define FPB (64)
@@ -33,12 +33,21 @@ struct Cell { int state; void *data; /* data is for non-integer states */};
 Cell cell(int state) { return (Cell) { state, NULL }; }
 //typedef struct { void *data; } GCell;
 
+int *int_arr(int sz, ...) { int *r = malloc(sz*sizeof(int)); va_list vl; va_start(vl,sz);
+  for(int i=0;i<sz;i++) { r[i] = va_arg(vl,int); } va_end(vl); return r; }
+
+int prod(int *a, int e) { int p = 1; for(int i=e;e>0;e--) { p*=a[e]; } return p; }
+
 CAut c_aut(Cell *cells, int *fra, int rank, CFun f) {
   return (CAut) { cells, fra, rank, f }; }
 int len(CAut c) { int s = 1; for(int i=0;i<c.rank;i++) { s*=c.fra[i]; } return s; }
+// TODO: generalize to all dimensions: (xm)(1)+(ym)(fra[0])+(zm)(fra[1]*fra[0])+ ...
 Cell index2(CAut a, int x, int y) { int xm = x%a.fra[0]; int ym = y%a.fra[1];
   xm += (x<0)*a.fra[0]; ym += (y<0)*a.fra[1];
-  return a.cells[xm+ym*a.fra[1]]; }
+  return a.cells[xm+ym*a.fra[0]]; }
+Cell index_g(CAut a, int *coords) { int total = 0;
+  for(int i=0;i<a.rank;i++) { total += coords[i]%a.fra[i]+((coords[i]<0)*a.fra[i])*prod(a.fra,i); }
+  return a.cells[total]; }
 
 void d_rect(GLfloat x, GLfloat y, GLfloat w, GLfloat h) {
   glVertex3f(x,y,0); glVertex3f(x+w,y,0); glVertex3f(x+w,y+h,0);
@@ -57,6 +66,9 @@ CAut copy_c(CAut c) { CAut n; n.cells = malloc(len(c)*sizeof(Cell));
   n.rank = c.rank; n.f = c.f; return n; }
 
 int get2(CAut c, int x, int y) { return index2(c,x,y).state; }
+int get(CAut c, ...) { va_list vl; va_start(vl,c); int *coords = malloc(c.rank*sizeof(int));
+  for(int i=0;i<c.rank;i++) { coords[i] = va_arg(vl,int); }
+  int a = index_g(c,coords).state; free(coords); va_end(vl); return a; }
 
 Cell id(Cell a, CAut c, int x, int y) { return a; }
 Cell f0(Cell a, CAut c, int x, int y) { return cell(!a.state); }
@@ -65,11 +77,25 @@ Cell conway(Cell a, CAut c, int x, int y) {
                 + get2(c,x+1,y+1)+get2(c,x,y+1)+get2(c,x-1,y+1);
   if(a.state) { return cell(neighbors>1&&neighbors<4); }
   return cell(neighbors==3); }
+Cell conway_g(Cell a, CAut c, int *co) {
+  int neighbors = get(c,co[0]-1,co[1])+get(c,co[0]-1,co[1]-1)
+                + get(c,co[0],co[1]-1)+get(c,co[0]+1,co[1]-1)+get(c,co[0]+1,co[1])
+                + get(c,co[0]+1,co[1]+1)+get(c,co[0],co[1]+1)+get(c,co[0]-1,co[1]+1);
+  if(a.state) { return cell(neighbors>1&&neighbors<4); }
+  return cell(neighbors==3); }
 
 // DONE: make this faster since reallocating every time isn't ideal.
+// TODO: Generalize to all dimensions.
+//   int_arr(i%c->fra[0],i%(c->fra[1]*c->fra[0])/c->fra[0]
+//          ,i%(c->fra[2]*c->fra[1]*c->fra[0])/(c->fra[1]*c->fra[0]))
 void next_state2D(CAut *c, CAut *n) {
   for(int i=0;i<len(*c);i++) {
     n->cells[i] = c->f(c->cells[i],*c,i%c->fra[0],i/c->fra[0]); } }
+// TODO: test this.
+/*void next_state(CAut *c, CAut *n) { int *coords = malloc(c->rank*sizeof(int));
+  for(int i=0;i<len(*c);i++) {
+    for(int q=0;q<c->rank;q++) { coords[q] = i%prod(c->fra,q+1)/prod(c->fra,q); }
+    n->cells[i] = c->f(c->cells[i],*c,coords); } free(coords); }*/
 
 const char *ver_v =
   "void main(void) { vec4 v = vec4(gl_Vertex);"
@@ -167,7 +193,7 @@ int pressed(GLFWwindow *win, int k) { return glfwGetKey(win,k)==GLFW_PRESS; }
      the PortAudio stream stops and the new sound is added to the array with a given predicate.
      All predicates take a GState as their input. */
 int main(void) {
-    srand(time(NULL));    
+    srand(time(NULL));
     CAut *c = malloc(sizeof(CAut)); CAut *bc = malloc(sizeof(CAut));
     
     Cell *a = malloc(SZ*SZ*sizeof(Cell));
