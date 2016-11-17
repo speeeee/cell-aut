@@ -38,7 +38,7 @@ Cell cell(int state) { return (Cell) { state, NULL }; }
 int *int_arr(int sz, ...) { int *r = malloc(sz*sizeof(int)); va_list vl; va_start(vl,sz);
   for(int i=0;i<sz;i++) { r[i] = va_arg(vl,int); } va_end(vl); return r; }
 
-int prod(int *a, int e) { int p = 1; for(int i=e;e>0;e--) { p*=a[e]; } return p; }
+int prod(int *a, int e) { int p = 1; for(int i=e;e>0;e--) { p*=a[e-1]; } return p; }
 
 CAut c_aut2D(Cell *cells, int *fra, int rank, CFun2D f2d) { CAut r;
   r.cells = cells; r.fra = fra; r.rank = rank; r.fs.f2d = f2d; return r; }
@@ -51,7 +51,7 @@ Cell index2(CAut a, int x, int y) { int xm = x%a.fra[0]; int ym = y%a.fra[1];
   xm += (x<0)*a.fra[0]; ym += (y<0)*a.fra[1];
   return a.cells[xm+ym*a.fra[0]]; }
 Cell index_g(CAut a, int *coords) { int total = 0;
-  for(int i=0;i<a.rank;i++) { total += coords[i]%a.fra[i]+((coords[i]<0)*a.fra[i])*prod(a.fra,i); }
+  for(int i=0;i<a.rank;i++) { total += (coords[i]%a.fra[i]+((coords[i]<0)*a.fra[i]))*prod(a.fra,i); }
   return a.cells[total]; }
 
 void d_rect(GLfloat x, GLfloat y, GLfloat w, GLfloat h) {
