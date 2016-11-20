@@ -15,7 +15,7 @@
 
 //#include "glob_structs.h"
 
-#define SZ (100)
+#define SZ (500)
 
 #define SAMPLE_RATE (44100)
 #define FPB (64)
@@ -24,8 +24,11 @@ typedef struct CAut CAut;
 typedef struct Cell Cell;
 typedef Cell (*CFun2D)(Cell,CAut,int,int);
 typedef Cell (*CFun)(Cell,CAut,int *);
+typedef void (*DFun2D)(Cell,int,int);
+typedef void (*DFun)(Cell,int *);
 struct CAut { Cell *cells; int *fra; int rank;
-              union { CFun f; CFun2D f2d; } fs; };
+              union { CFun f; CFun2D f2d; } fs;
+              union { DFun d; DFun2D d2d; } dfs; };
 // more efficient 1-generation lookback.
 typedef struct { CAut *curr; CAut *next; } SwapCAut;
 void swap(SwapCAut *cc) { /* optionally set all c.next to 0 after swap. */
@@ -35,15 +38,20 @@ struct Cell { int state; void *data; /* data is for non-integer states */};
 Cell cell(int state) { return (Cell) { state, NULL }; }
 //typedef struct { void *data; } GCell;
 
+typedef struct { int time; } ProgState;
+
+// count amt of st in cell array a.
+//int count(Cell *a, int len, int st) { int q = 0; for(int i=0;i<len&&(a[i]!=st||q++);i++); return q; }
+
 int *int_arr(int sz, ...) { int *r = malloc(sz*sizeof(int)); va_list vl; va_start(vl,sz);
   for(int i=0;i<sz;i++) { r[i] = va_arg(vl,int); } va_end(vl); return r; }
 
 int prod(int *a, int e) { int p = 1; for(int i=e;e>0;e--) { p*=a[e-1]; } return p; }
 
-CAut c_aut2D(Cell *cells, int *fra, int rank, CFun2D f2d) { CAut r;
-  r.cells = cells; r.fra = fra; r.rank = rank; r.fs.f2d = f2d; return r; }
-CAut c_aut(Cell *cells, int *fra, int rank, CFun f) { CAut r;
-  r.cells = cells; r.fra = fra; r.rank = rank; r.fs.f = f; return r; }
+CAut c_aut2D(Cell *cells, int *fra, int rank, CFun2D f2d, DFun2D d2d) { CAut r;
+  r.cells = cells; r.fra = fra; r.rank = rank; r.fs.f2d = f2d; r.dfs.d2d = d2d; return r; }
+CAut c_aut(Cell *cells, int *fra, int rank, CFun f, DFun d) { CAut r;
+  r.cells = cells; r.fra = fra; r.rank = rank; r.fs.f = f; r.dfs.d = d; return r; }
   
 int len(CAut c) { int s = 1; for(int i=0;i<c.rank;i++) { s*=c.fra[i]; } return s; }
 // TODO: generalize to all dimensions: (xm)(1)+(ym)(fra[0])+(zm)(fra[1]*fra[0])+ ...
@@ -57,12 +65,19 @@ Cell index_g(CAut a, int *coords) { int total = 0;
 void d_rect(GLfloat x, GLfloat y, GLfloat w, GLfloat h) {
   glVertex3f(x,y,0); glVertex3f(x+w,y,0); glVertex3f(x+w,y+h,0);
   glVertex3f(x,y+h,0); }
-void d_conway(CAut c, GLFWwindow *win) { int ww, wh;
+void d_conway(CAut c, GLFWwindow *win, GLfloat xsz, GLfloat ysz) { int ww, wh;
   glfwGetFramebufferSize(win,&ww,&wh);
   for(int i=0;i<len(c);i++) { if(c.cells[i].state) {
-    d_rect(4.0/(GLfloat)c.fra[0]*(i%c.fra[0])-2
-          ,2-4.0/(GLfloat)c.fra[1]*(i/c.fra[1])
-          ,4.0/(GLfloat)c.fra[0],4.0/(GLfloat)c.fra[1]); } } }
+    d_rect(xsz/(GLfloat)c.fra[0]*(i%c.fra[0])-xsz/2
+          ,ysz/2-ysz/(GLfloat)c.fra[1]*(i/c.fra[1])
+          ,xsz/(GLfloat)c.fra[0],ysz/(GLfloat)c.fra[1]); } } }
+
+void d_cells2D(CAut c, GLfloat xt, GLfloat yt, GLfloat w, GLfloat h) {
+  glPushMatrix(); glTranslatef(xt,yt,0); glScalef(w/(GLfloat)c.fra[0],h/(GLfloat)c.fra[1],0);
+  glBegin(GL_QUADS);
+  for(int i=0;i<len(c);i++) { c.dfs.d2d(c.cells[i],i%c.fra[0],i/c.fra[1]); }
+  glEnd(); glPopMatrix(); }
+void d_conway_2(Cell c, int x, int y) { if(c.state) { d_rect(x,y,1,1); } }
 
 void free_c_aut(CAut c) { free(c.cells); free(c.fra); }
 // does not copy data; only frame.
@@ -160,13 +175,16 @@ void paint(GLFWwindow *win, CAut *c) { glLoadIdentity();
   glTranslatef(0,0,/*-1.5*/-5);
 
   glColor4f(1.0,0.0,0.0,1.0);
-  glBegin(GL_QUADS); 
+  //glBegin(GL_QUADS); 
     //glVertex3f(-0.05,0,0.05); glVertex3f(0.05,0,0.05);
     //glVertex3f(0.05,0.1,0.05); glVertex3f(-0.05,0.1,0.05);
-    d_conway(*c,win);
+    //d_conway(*c,win,4.0,4.0);
+  d_cells2D(*c,-2.0,-2.0,4.0,4.0);
   glEnd(); }
 
 int pressed(GLFWwindow *win, int k) { return glfwGetKey(win,k)==GLFW_PRESS; }
+
+// TODO: add menu that contains pause, play, speed, etc.  Menu is accessed with a toggle key.
 
 //void set_k(GLfloat a[RC], GLfloat b[RC]) { for(int i=0;i<RC;i++) { a[i] = b[i]; } }
 // all key processing happens here.
@@ -205,11 +223,11 @@ int main(void) {
     for(int i=0;i<SZ*SZ;i++) {
       a[i].state = rand()%2; }
     int *fra = malloc(2*sizeof(int)); fra[0] = fra[1] = SZ;
-    *c = c_aut2D(a,fra,2,conway);
+    *c = c_aut2D(a,fra,2,conway,d_conway_2);
 
     Cell *b = calloc(SZ*SZ,sizeof(Cell));
     int *bfra = malloc(2*sizeof(int)); bfra[0] = bfra[1] = SZ;
-    *bc = c_aut2D(b,bfra,2,conway);
+    *bc = c_aut2D(b,bfra,2,conway,d_conway_2);
 
     SwapCAut cc = (SwapCAut) { c, bc };
 
