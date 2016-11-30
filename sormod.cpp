@@ -28,7 +28,7 @@ typedef struct Item { char *dat; std::vector<struct Item> quot;
 typedef struct { std::deque<Item> deq; int mode; } Program;
 
 //typedef void (*SFun)(Program);
-typedef std::function<void(Program)> SFun;
+typedef std::function<void(Program *)> SFun;
 
 std::vector<SFun> funs;
 
@@ -48,16 +48,17 @@ int dat__int(char *dat) {
 
 // NOTE: use std::move when moving data array to struct.
 
-void call(Program prog, Item callee) {
-  if(callee.typ==FUN_T) { prog.deq.push_front(callee); }
+void call(Program *prog, Item callee) {
+  if(callee.typ!=FUN_T) { prog->deq.push_front(callee); }
   else { (funs.at(dat__int(callee.dat)))(prog); } }
 
-void invoke_mode(Program prog, Item subj) { switch(prog.mode) {
+void invoke_mode(Program *prog, Item subj) {
+  switch(prog->mode) {
   case READ_MODE: call(prog,subj); break; } }
 
 // TODO: make this less repetitive.
 // TODO: try to use something better than char *.
-void read_bytecode(std::tuple<char *,int> bc, Program prog) { int z = 0;
+void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
   while(z<std::get<1>(bc)) { switch(std::get<0>(bc)[z]) {
     case R_WORD: { Item p; z++; char *dat = (new char[sizeof(int)]);
                    memcpy(dat,&std::get<0>(bc)[z],sizeof(int));
@@ -73,6 +74,7 @@ void read_bytecode(std::tuple<char *,int> bc, Program prog) { int z = 0;
                    z+=sizeof(int); invoke_mode(prog,p); break; } } } }
 
 int main(int argc, char **argv) {
-  std::tuple<char *,int> bc = readf("test.sm");
-  Program prog; prog = (Program) { std::deque<Item>(), READ_MODE };
-  read_bytecode(bc,prog); delete[] std::get<0>(bc); return 0; }
+  std::tuple<char *,int> bc = //readf("test.sm");
+                              std::make_tuple((char[5]){0,4,0,0,0},5);
+  Program *prog = new Program; prog->deq = std::deque<Item>(); prog->mode = READ_MODE;
+  read_bytecode(bc,prog); /*delete[] std::get<0>(bc); delete prog;*/ return 0; }
