@@ -37,10 +37,6 @@ typedef struct { std::deque<Item> deq; int mode; } Program;
 int dat__int(char *dat) {
   return (dat[3] << 24) | (dat[2] << 16) | (dat[1] << 8) | dat[0]; }
 
-void print_int(Program *a) { printf("%i",dat__int(a->deq.back().dat)); a->deq.pop_back(); }
-void quote_read(Program *a) { Item e; e.quot = std::vector<Item>();
-  e.typ = QUOT_T; e.sz = 0; a->deq.push_back(e); a->mode = QUOT_MODE; }
-
 // TODO: quote-read mode.  make `[' which changes mode to quote mode and pushes to back of deque [].
 //     : QUOT_MODE will read each token into back element.
 
@@ -48,7 +44,17 @@ void quote_read(Program *a) { Item e; e.quot = std::vector<Item>();
 char *cl_brkt = (char[1]){0x5D};
 
 //typedef void (*SFun)(Program);
-typedef std::function<void(Program *)> SFun;
+typedef std::function<void(Program *, Item)> PuFun; // push functions based on mode.
+typedef std::function<Item(Program *)> PoFun; // pop functions based on mode.
+typedef std::function<void(Program *, PuFun, PoFun)> SFun;
+
+void print_int(Program *a, PuFun pu, PoFun po) {
+  printf("%i",dat__int(po(a).dat/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
+// invoke only in READ_MODE.
+void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::vector<Item>();
+  e.typ = QUOT_T; e.sz = 0; pu(a,e); /*a->deq.push_back(e);*/ a->mode = QUOT_MODE; }
+void push(Program *a, Item subj) { a->deq.push_back(subj); }
+Item pop(Program *a) { Item e = a->deq.back(); a->deq.pop_back(); return e; }
 
 std::vector<SFun> funs;
 
@@ -63,15 +69,15 @@ char ind(std::unique_ptr<char[]> dat, int i) { return dat[i]; }
 
 // NOTE: use std::move when moving data array to struct.
 
-void call(Program *prog, Item callee) {
-  if(callee.typ!=FUN_T) { prog->deq.push_front(callee); }
-  else { (funs.at(dat__int(callee.dat)))(prog); } }
+void call(Program *prog, Item callee, PuFun pu, PoFun po) {
+  if(callee.typ!=FUN_T) { /*prog->deq.push_front*/pu(prog,callee); }
+  else { (funs.at(dat__int(callee.dat)))(prog, pu, po); } }
 
 void invoke_mode(Program *prog, Item subj) {
   switch(prog->mode) {
-  case READ_MODE: call(prog,subj); break;
+  case READ_MODE: call(prog,subj,push,pop); break;
   case QUOT_MODE: // TODO: make this cleaner.
-                  if(subj.typ==SYM_T&&!memcmp(subj.dat,cl_brkt,1)) {
+                  if(subj.typ==SYM_T&&subj.sz==1&&!memcmp(subj.dat,cl_brkt,1)) {
                     prog->mode = READ_MODE; }
                   else { prog->deq.back().quot.push_back(subj); } break; } }
 
@@ -95,8 +101,8 @@ void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
 int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quote_read);
   std::tuple<char *,int> bc = //readf("test.sm");
                               // test0
-                              //std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
+                              std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
                               // test2
-                              std::make_tuple((char[16]){2,1,0,0,0,0,4,0,0,0,3,1,0,0,0,0x5D},16);
+                              //std::make_tuple((char[16]){2,1,0,0,0,0,4,0,0,0,3,1,0,0,0,0x5D},16);
   Program *prog = new Program; prog->deq = std::deque<Item>(); prog->mode = READ_MODE;
   read_bytecode(bc,prog); /*delete[] std::get<0>(bc); delete prog;*/ return 0; }
