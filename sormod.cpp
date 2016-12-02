@@ -16,10 +16,14 @@
 #define R_WORD  0
 #define R_DWORD 1
 #define R_FUN   2
+#define R_SYM   3
 
 #define WORD_T  0
 #define DWORD_T 1
 #define FUN_T   2
+
+#define QUOT_T  3
+#define SYM_T   4
 
 // TODO: change all char to int8_t.
 
@@ -34,9 +38,14 @@ int dat__int(char *dat) {
   return (dat[3] << 24) | (dat[2] << 16) | (dat[1] << 8) | dat[0]; }
 
 void print_int(Program *a) { printf("%i",dat__int(a->deq.back().dat)); a->deq.pop_back(); }
+void quote_read(Program *a) { Item e; e.quot = std::vector<Item>();
+  e.typ = QUOT_T; e.sz = 0; a->deq.push_back(e); a->mode = QUOT_MODE; }
 
 // TODO: quote-read mode.  make `[' which changes mode to quote mode and pushes to back of deque [].
 //     : QUOT_MODE will read each token into back element.
+
+// this is a temporary variable and will be removed when it is no longer needed.
+char *cl_brkt = (char[1]){0x5D};
 
 //typedef void (*SFun)(Program);
 typedef std::function<void(Program *)> SFun;
@@ -60,7 +69,11 @@ void call(Program *prog, Item callee) {
 
 void invoke_mode(Program *prog, Item subj) {
   switch(prog->mode) {
-  case READ_MODE: call(prog,subj); break; } }
+  case READ_MODE: call(prog,subj); break;
+  case QUOT_MODE: // TODO: make this cleaner.
+                  if(subj.typ==SYM_T&&!memcmp(subj.dat,cl_brkt,1)) {
+                    prog->mode = READ_MODE; }
+                  else { prog->deq.back().quot.push_back(subj); } break; } }
 
 // WARNING: do not use outside of read_bytecode due to dependence on bc and z.
 #define IN_TOK(SZ, TYPE) \
@@ -75,10 +88,15 @@ void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
   while(z<std::get<1>(bc)) { switch(std::get<0>(bc)[z]) {
     case R_WORD: { IN_TOK(sizeof(int),WORD_T) invoke_mode(prog,p); break; }
     case R_DWORD: { IN_TOK(sizeof(int64_t),DWORD_T) invoke_mode(prog,p); break; }
-    case R_FUN: { IN_TOK(sizeof(int),FUN_T) invoke_mode(prog,p); break; } } } }
+    case R_FUN: { IN_TOK(sizeof(int),FUN_T) invoke_mode(prog,p); break; }
+    case R_SYM: { int sz; memcpy(&sz,&std::get<0>(bc)[++z],sizeof(int)); z+=sizeof(int);
+                  IN_TOK(sz,SYM_T) invoke_mode(prog,p); break; } } } }
 
-int main(int argc, char **argv) { funs.push_back(print_int);
+int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quote_read);
   std::tuple<char *,int> bc = //readf("test.sm");
-                              std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
+                              // test0
+                              //std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
+                              // test2
+                              std::make_tuple((char[16]){2,1,0,0,0,0,4,0,0,0,3,1,0,0,0,0x5D},16);
   Program *prog = new Program; prog->deq = std::deque<Item>(); prog->mode = READ_MODE;
   read_bytecode(bc,prog); /*delete[] std::get<0>(bc); delete prog;*/ return 0; }
