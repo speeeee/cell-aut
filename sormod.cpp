@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <memory>
 #include <tuple>
-#include <vector>
+#include <queue>
 
 #include <fstream>
 #include <deque>
@@ -28,8 +28,12 @@
 // TODO: change all char to int8_t.
 
 // use vector if not C++11?
-typedef struct Item { char *dat; std::vector<struct Item> quot;
+// TODO: create some kind of destructor for Item.
+typedef struct Item { char *dat; std::queue<struct Item> quot;
                       int typ; int sz; } Item;
+Item item(char *dat, std::queue<Item> quot, int typ, int sz) {
+  return (Item) { dat, quot, typ, sz }; }
+void item_free(Item e) { if(e.dat) { delete e.dat; } /* TODO: destroy queue? */ }
 typedef struct { std::deque<Item> deq; int mode; } Program;
 
 // TODO: configure to test for little- or big-endianness.
@@ -37,7 +41,7 @@ typedef struct { std::deque<Item> deq; int mode; } Program;
 int dat__int(char *dat) {
   return (dat[3] << 24) | (dat[2] << 16) | (dat[1] << 8) | dat[0]; }
 
-// TODO: quote-read mode.  make `[' which changes mode to quote mode and pushes to back of deque [].
+// DONE: quote-read mode.  make `[' which changes mode to quote mode and pushes to back of deque [].
 //     : QUOT_MODE will read each token into back element.
 
 // this is a temporary variable and will be removed when it is no longer needed.
@@ -48,11 +52,16 @@ typedef std::function<void(Program *, Item)> PuFun; // push functions based on m
 typedef std::function<Item(Program *)> PoFun; // pop functions based on mode.
 typedef std::function<void(Program *, PuFun, PoFun)> SFun;
 
+void read_parse(std::queue<Item>, Program *);
+
 void print_int(Program *a, PuFun pu, PoFun po) {
   printf("%i",dat__int(po(a).dat/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
 // invoke only in READ_MODE.
-void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::vector<Item>();
+void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::queue<Item>();
   e.typ = QUOT_T; e.sz = 0; pu(a,e); /*a->deq.push_back(e);*/ a->mode = QUOT_MODE; }
+// reminder that `po' is destructive.
+void f_call(Program *a, PuFun pu, PoFun po) { read_parse(po(a).quot,a); }
+
 void push(Program *a, Item subj) { a->deq.push_back(subj); }
 Item pop(Program *a) { Item e = a->deq.back(); a->deq.pop_back(); return e; }
 
@@ -79,30 +88,38 @@ void invoke_mode(Program *prog, Item subj) {
   case QUOT_MODE: // TODO: make this cleaner.
                   if(subj.typ==SYM_T&&subj.sz==1&&!memcmp(subj.dat,cl_brkt,1)) {
                     prog->mode = READ_MODE; }
-                  else { prog->deq.back().quot.push_back(subj); } break; } }
+                  else { prog->deq.back().quot.push(subj); } break; } }
 
 // WARNING: do not use outside of read_bytecode due to dependence on bc and z.
 #define IN_TOK(SZ, TYPE) \
-    Item p; z++; char *dat = (new char[SZ]); \
+    Item p; /*z++*/ char *dat = (new char[SZ]); \
     memcpy(dat,&std::get<0>(bc)[z],(SZ)); \
-    p = (Item) { dat, std::vector<Item>(), (TYPE), (SZ) }; \
-    z+=sizeof(int);
+    p = (Item) { dat, std::queue<Item>(), (TYPE), (SZ) }; \
+    z+=(SZ);
+
+// TODO: write call function and parse with just queue.
+void read_parse(std::queue<Item> bc, Program *prog) {
+  while(!bc.empty()) { invoke_mode(prog,bc.back()); bc.pop(); } }
 
 // TODO: make this less repetitive.
 // TODO: try to use something better than char *.
 void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
   while(z<std::get<1>(bc)) { switch(std::get<0>(bc)[z]) {
-    case R_WORD: { IN_TOK(sizeof(int),WORD_T) invoke_mode(prog,p); break; }
-    case R_DWORD: { IN_TOK(sizeof(int64_t),DWORD_T) invoke_mode(prog,p); break; }
-    case R_FUN: { IN_TOK(sizeof(int),FUN_T) invoke_mode(prog,p); break; }
+    case R_WORD: { z++; IN_TOK(sizeof(int),WORD_T) invoke_mode(prog,p); break; }
+    case R_DWORD: { z++; IN_TOK(sizeof(int64_t),DWORD_T) invoke_mode(prog,p); break; }
+    case R_FUN: { z++; IN_TOK(sizeof(int),FUN_T) invoke_mode(prog,p); break; }
     case R_SYM: { int sz; memcpy(&sz,&std::get<0>(bc)[++z],sizeof(int)); z+=sizeof(int);
                   IN_TOK(sz,SYM_T) invoke_mode(prog,p); break; } } } }
 
 int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quote_read);
+                                  funs.push_back(f_call);
   std::tuple<char *,int> bc = //readf("test.sm");
                               // test0
-                              std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
+                              //std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
                               // test2
                               //std::make_tuple((char[16]){2,1,0,0,0,0,4,0,0,0,3,1,0,0,0,0x5D},16);
+                              // test3
+                              std::make_tuple((char[26]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
+                                                        ,2,2,0,0,0},26);
   Program *prog = new Program; prog->deq = std::deque<Item>(); prog->mode = READ_MODE;
   read_bytecode(bc,prog); /*delete[] std::get<0>(bc); delete prog;*/ return 0; }
