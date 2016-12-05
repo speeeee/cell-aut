@@ -43,6 +43,10 @@ int dat__int(char *dat) {
   return (dat[3] << 24) | (dat[2] << 16) | (dat[1] << 8) | dat[0]; }
 
 // TODO: runtime error for attempt to pop empty stack.
+// TODO: function definition using quotes.
+//     : function definition will involve the usage of lambda functions to be more
+//         convenient to write.  Though, since these functions will be just a wrapper around
+//         the quote itself, it would probably be better to store in separate vector.
 
 // DONE: quote-read mode.  make `[' which changes mode to quote mode and pushes to back of deque [].
 //     : QUOT_MODE will read each token into back element.
@@ -55,6 +59,11 @@ typedef std::function<void(Program *, Item)> PuFun; // push functions based on m
 typedef std::function<Item(Program *)> PoFun; // pop functions based on mode.
 typedef std::function<void(Program *, PuFun, PoFun)> SFun;
 
+#define FSZ 6
+std::vector<SFun> funs; // functions defined from the start.  also contains functions from
+                        //   DLLs wrapped in a lambda function.
+std::vector<Item> dfuns; // functions defined by user at runtime.  stored as quotes.
+
 void read_parse(std::queue<Item>, Program *);
 
 void print_int(Program *a, PuFun pu, PoFun po) {
@@ -66,13 +75,12 @@ void read_mode(Program *a, PuFun pu, PoFun po) { a->mode = READ_MODE; }
 void rev_mode(Program *a, PuFun pu, PoFun po) { a->mode = REV_MODE; }
 // reminder that `po' is destructive.
 void f_call(Program *a, PuFun pu, PoFun po) { read_parse(po(a).quot,a); }
+void d_fun(Program *a, PuFun pu, PoFun po) { dfuns.push_back(po(a)); }
 
 void push(Program *a, Item subj) { a->deq.push_back(subj); }
 Item pop(Program *a) { Item e = a->deq.back(); a->deq.pop_back(); return e; }
 void fpush(Program *a, Item subj) { a->deq.push_front(subj); }
 Item fpop(Program *a) { Item e = a->deq.front(); a->deq.pop_front(); return e; }
-
-std::vector<SFun> funs;
 
 // WARNING: returns newly allocated c-string.
 std::tuple<char *, int> readf(const char *in) {
@@ -87,7 +95,9 @@ char ind(std::unique_ptr<char[]> dat, int i) { return dat[i]; }
 
 void call(Program *prog, Item callee, PuFun pu, PoFun po) {
   if(callee.typ!=FUN_T) { /*prog->deq.push_front*/pu(prog,callee); }
-  else { (funs.at(dat__int(callee.dat)))(prog, pu, po); } }
+  else { int f = dat__int(callee.dat);
+         if(f>=FSZ) { read_parse(dfuns.at(f-FSZ).quot,prog); }
+         else { (funs.at(f))(prog, pu, po); } } }
 
 void invoke_mode(Program *prog, Item subj) {
   switch(prog->mode) {
@@ -121,14 +131,18 @@ void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
 
 int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quote_read);
                                   funs.push_back(f_call); funs.push_back(read_mode);
-                                  funs.push_back(rev_mode);
+                                  funs.push_back(rev_mode); funs.push_back(d_fun);
   std::tuple<char *,int> bc = //readf("test.sm");
                               // test0
                               //std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
                               // test2
                               //std::make_tuple((char[16]){2,1,0,0,0,0,4,0,0,0,3,1,0,0,0,0x5D},16);
                               // test3
-                              std::make_tuple((char[26]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
-                                                        ,2,2,0,0,0},26);
+                              //std::make_tuple((char[26]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
+                              //                          ,2,2,0,0,0},26);
+                              // test4
+                              std::make_tuple((char[31]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
+                                                        ,2,5,0,0,0,2,6,0,0,0},31);
+                              
   Program *prog = new Program; prog->deq = std::deque<Item>(); prog->mode = READ_MODE;
   read_bytecode(bc,prog); /*delete[] std::get<0>(bc); delete prog;*/ return 0; }
