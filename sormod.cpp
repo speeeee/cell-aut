@@ -4,6 +4,7 @@
 #include <memory>
 #include <tuple>
 #include <queue>
+#include <stack>
 
 #include <fstream>
 #include <deque>
@@ -35,7 +36,7 @@ typedef struct Item { char *dat; std::queue<struct Item> quot;
 Item item(char *dat, std::queue<Item> quot, int typ, int sz) {
   return (Item) { dat, quot, typ, sz }; }
 void item_free(Item e) { if(e.dat) { delete e.dat; } /* TODO: destroy queue? */ }
-typedef struct { std::deque<Item> deq; int mode; } Program;
+typedef struct { std::deque<Item> deq; std::stack<int> p_modes; int mode; } Program;
 
 // TODO: configure to test for little- or big-endianness.
 // little endian.
@@ -70,9 +71,11 @@ void print_int(Program *a, PuFun pu, PoFun po) {
   printf("%i",dat__int(po(a).dat/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
 // invoke only in READ_MODE.
 void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::queue<Item>();
-  e.typ = QUOT_T; e.sz = 0; pu(a,e); /*a->deq.push_back(e);*/ a->mode = QUOT_MODE; }
+  e.typ = QUOT_T; e.sz = 1; pu(a,e); /*a->deq.push_back(e);*/ 
+  a->p_modes.push(a->mode); a->mode = QUOT_MODE; }
 void read_mode(Program *a, PuFun pu, PoFun po) { a->mode = READ_MODE; }
-void rev_mode(Program *a, PuFun pu, PoFun po) { a->mode = REV_MODE; }
+void rev_mode(Program *a, PuFun pu, PoFun po) { if(a->mode==READ_MODE) { a->mode = REV_MODE; } 
+  else { a->mode = READ_MODE; } }
 // reminder that `po' is destructive.
 void f_call(Program *a, PuFun pu, PoFun po) { read_parse(po(a).quot,a); }
 void d_fun(Program *a, PuFun pu, PoFun po) { dfuns.push_back(po(a)); }
@@ -104,8 +107,11 @@ void invoke_mode(Program *prog, Item subj) {
   case READ_MODE: call(prog,subj,push,pop); break;
   case REV_MODE: call(prog,subj,fpush,fpop); break;
   case QUOT_MODE: // TODO: make this cleaner.
-                  if(subj.typ==SYM_T&&subj.sz==1&&!memcmp(subj.dat,cl_brkt,1)) {
-                    prog->mode = READ_MODE; }
+                  // DONE: allow for embedded quotes.
+                  // !!! WARNING: irregular use of `subj.sz' as counter for embedded brackets.
+                  if(subj.typ==FUN_T&&dat__int(subj.dat)==1/*quote_read mode*/) { subj.sz++; }
+                  if(subj.typ==SYM_T&&subj.sz==1&&!memcmp(subj.dat,cl_brkt,1)) { subj.sz--; }
+                  if(!subj.sz) { prog->mode = prog->p_modes.top(); prog->p_modes.pop(); }
                   else { prog->deq.back().quot.push(subj); } break; } }
 
 // WARNING: do not use outside of read_bytecode due to dependence on bc and z.
@@ -144,5 +150,6 @@ int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quot
                               std::make_tuple((char[31]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
                                                         ,2,5,0,0,0,2,6,0,0,0},31);
                               
-  Program *prog = new Program; prog->deq = std::deque<Item>(); prog->mode = READ_MODE;
+  Program *prog = new Program; prog->deq = std::deque<Item>(); prog->p_modes = std::stack<int>();
+                               prog->mode = READ_MODE;
   read_bytecode(bc,prog); /*delete[] std::get<0>(bc); delete prog;*/ return 0; }
