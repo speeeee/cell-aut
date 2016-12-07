@@ -31,11 +31,12 @@
 
 // use vector if not C++11?
 // TODO: create some kind of destructor for Item.
-typedef struct Item { char *dat; std::queue<struct Item> quot;
+typedef struct Item { std::shared_ptr<char> dat; std::queue<struct Item> quot;
                       int typ; int sz; } Item;
-Item item(char *dat, std::queue<Item> quot, int typ, int sz) {
-  return (Item) { dat, quot, typ, sz }; }
-void item_free(Item e) { if(e.dat) { delete e.dat; } /* TODO: destroy queue? */ }
+struct ItemDeleter { void operator()(char *c) { delete[] c; } };
+/*Item item(char *dat, std::queue<Item> quot, int typ, int sz) {
+  return (Item) { dat, quot, typ, sz }; }*/
+//void item_free(Item e) { if(e.dat) { delete e.dat; } /* TODO: destroy queue? */ }
 typedef struct { std::deque<Item> deq; std::stack<int> p_modes; int mode; } Program;
 
 // TODO: configure to test for little- or big-endianness.
@@ -68,7 +69,7 @@ std::vector<Item> dfuns; // functions defined by user at runtime.  stored as quo
 void read_parse(std::queue<Item>, Program *);
 
 void print_int(Program *a, PuFun pu, PoFun po) {
-  printf("%i",dat__int(po(a).dat/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
+  printf("%i",dat__int(po(a).dat.get()/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
 // invoke only in READ_MODE.
 void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::queue<Item>();
   e.typ = QUOT_T; e.sz = 1; pu(a,e); /*a->deq.push_back(e);*/ 
@@ -98,7 +99,7 @@ char ind(std::unique_ptr<char[]> dat, int i) { return dat[i]; }
 
 void call(Program *prog, Item callee, PuFun pu, PoFun po) {
   if(callee.typ!=FUN_T) { /*prog->deq.push_front*/pu(prog,callee); }
-  else { int f = dat__int(callee.dat);
+  else { int f = dat__int(callee.dat.get());
          if(f>=FSZ) { read_parse(dfuns.at(f-FSZ).quot,prog); }
          else { (funs.at(f))(prog, pu, po); } } }
 
@@ -109,8 +110,9 @@ void invoke_mode(Program *prog, Item subj) {
   case QUOT_MODE: // TODO: make this cleaner.
                   // DONE: allow for embedded quotes.
                   // !!! WARNING: irregular use of `subj.sz' as counter for embedded brackets.
-                  if(subj.typ==FUN_T&&dat__int(subj.dat)==1/*quote_read mode*/) { subj.sz++; }
-                  if(subj.typ==SYM_T&&subj.sz==1&&!memcmp(subj.dat,cl_brkt,1)) { subj.sz--; }
+                  //            : subj.sz will always be 0 given that the quotes are well-formed.
+                  if(subj.typ==FUN_T&&dat__int(subj.dat.get())==1/*quote_read mode*/) { subj.sz++; }
+                  if(subj.typ==SYM_T&&subj.sz==1&&!memcmp(subj.dat.get(),cl_brkt,1)) { subj.sz--; }
                   if(!subj.sz) { prog->mode = prog->p_modes.top(); prog->p_modes.pop(); }
                   else { prog->deq.back().quot.push(subj); } break; } }
 
@@ -118,7 +120,8 @@ void invoke_mode(Program *prog, Item subj) {
 #define IN_TOK(SZ, TYPE) \
     Item p; /*z++*/ char *dat = (new char[SZ]); \
     memcpy(dat,&std::get<0>(bc)[z],(SZ)); \
-    p = (Item) { dat, std::queue<Item>(), (TYPE), (SZ) }; \
+    p = (Item) { std::shared_ptr<char>(dat,std::default_delete<char[]>()) \
+               , std::queue<Item>(), (TYPE), (SZ) }; \
     z+=(SZ);
 
 // DONE: write call function and parse with just queue.
@@ -152,4 +155,4 @@ int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quot
                               
   Program *prog = new Program; prog->deq = std::deque<Item>(); prog->p_modes = std::stack<int>();
                                prog->mode = READ_MODE;
-  read_bytecode(bc,prog); /*delete[] std::get<0>(bc); delete prog;*/ return 0; }
+  read_bytecode(bc,prog); /*delete[] std::get<0>(bc);*/ delete prog; return 0; }
