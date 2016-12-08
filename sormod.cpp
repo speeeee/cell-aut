@@ -30,7 +30,7 @@
 // TODO: change all char to int8_t.
 
 // use vector if not C++11?
-// TODO: create some kind of destructor for Item.
+// DONE: create some kind of destructor for Item.
 typedef struct Item { std::shared_ptr<char> dat; std::queue<struct Item> quot;
                       int typ; int sz; } Item;
 struct ItemDeleter { void operator()(char *c) { delete[] c; } };
@@ -45,13 +45,15 @@ int dat__int(char *dat) {
   return (dat[3] << 24) | (dat[2] << 16) | (dat[1] << 8) | dat[0]; }
 
 // TODO: runtime error for attempt to pop empty stack.
-// TODO: function definition using quotes.
+// DONE: function definition using quotes.
 //     : function definition will involve the usage of lambda functions to be more
 //         convenient to write.  Though, since these functions will be just a wrapper around
 //         the quote itself, it would probably be better to store in separate vector.
 
 // DONE: quote-read mode.  make `[' which changes mode to quote mode and pushes to back of deque [].
 //     : QUOT_MODE will read each token into back element.
+
+// TODO: add file importing.
 
 // this is a temporary variable and will be removed when it is no longer needed.
 char *cl_brkt = (char[1]){0x5D};
@@ -89,7 +91,7 @@ Item fpop(Program *a) { Item e = a->deq.front(); a->deq.pop_front(); return e; }
 // WARNING: returns newly allocated c-string.
 std::tuple<char *, int> readf(const char *in) {
   std::ifstream ii(in, std::ifstream::ate | std::ifstream::binary);
-  int len = ii.tellg(); char *buf = new char[len]; ii.read(buf,len); 
+  int len = ii.tellg(); ii.seekg(0,std::ios::beg); char *buf = new char[len]; ii.read(buf,len); 
   return std::make_tuple(buf,len); }
 
 // in case vector is needed and all indexing operations must be switched.
@@ -129,7 +131,7 @@ void read_parse(std::queue<Item> bc, Program *prog) {
   while(!bc.empty()) { invoke_mode(prog,bc.back()); bc.pop(); } }
 
 // DONE: make this less repetitive.
-// TODO: try to use something better than char *.
+// DONE: try to use something better than char *.
 void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
   while(z<std::get<1>(bc)) { switch(std::get<0>(bc)[z]) {
     case R_WORD: { z++; IN_TOK(sizeof(int),WORD_T) invoke_mode(prog,p); break; }
@@ -141,7 +143,7 @@ void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
 int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quote_read);
                                   funs.push_back(f_call); funs.push_back(read_mode);
                                   funs.push_back(rev_mode); funs.push_back(d_fun);
-  std::tuple<char *,int> bc = //readf("test.sm");
+  std::tuple<char *,int> bc = readf("test.sm");
                               // test0
                               //std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
                               // test2
@@ -150,8 +152,8 @@ int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quot
                               //std::make_tuple((char[26]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
                               //                          ,2,2,0,0,0},26);
                               // test4
-                              std::make_tuple((char[31]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
-                                                        ,2,5,0,0,0,2,6,0,0,0},31);
+                              //std::make_tuple((char[31]){0,4,0,0,0,2,1,0,0,0,2,0,0,0,0,3,1,0,0,0,0x5D
+                              //                          ,2,5,0,0,0,2,6,0,0,0},31);
                               
   Program *prog = new Program; prog->deq = std::deque<Item>(); prog->p_modes = std::stack<int>();
                                prog->mode = READ_MODE;
