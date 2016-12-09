@@ -29,6 +29,9 @@
 
 // TODO: change all char to int8_t.
 
+// TODO: create dump function.
+// TODO: create general mode change function.
+
 // use vector if not C++11?
 // DONE: create some kind of destructor for Item.
 typedef struct Item { std::shared_ptr<char> dat; std::queue<struct Item> quot;
@@ -94,6 +97,29 @@ std::tuple<char *, int> readf(const char *in) {
   int len = ii.tellg(); ii.seekg(0,std::ios::beg); char *buf = new char[len]; ii.read(buf,len); 
   return std::make_tuple(buf,len); }
 
+/*#define WORD_T  0
+#define DWORD_T 1
+#define FUN_T   2
+
+#define QUOT_T  3
+#define SYM_T   4*/
+void encode_out(Item f, FILE *o) { switch(f.typ) {
+  case WORD_T: fputc(R_WORD,o); fwrite(f.dat.get(),sizeof(int),1,o); break;
+  case DWORD_T: fputc(R_DWORD,o); fwrite(f.dat.get(),sizeof(int64_t),1,o); break;
+  case FUN_T: fputc(R_FUN,o); fwrite(f.dat.get(),sizeof(int),1,o); break;
+  case QUOT_T: { fputc(R_FUN,o); int a = 1; fwrite(&a,sizeof(int),1,o); int sz = f.quot.size();
+    fwrite(&sz,sizeof(int),1,o); std::queue<Item> bc = f.quot;
+    while(!bc.empty()) { encode_out(bc.back(),o); bc.pop(); }
+    fputc(R_SYM,o); int csz = 1; fwrite(&csz,sizeof(int),1,o); fputc(0x5D,o); break; }
+  case SYM_T: fputc(R_SYM,o); fwrite(&f.sz,sizeof(int),1,o);
+    fwrite(f.dat.get(),sizeof(char),f.sz,o); break; } }
+
+void dumpf(std::tuple<char *, int> dump, Program *prog, const char *out) {
+  FILE *o = fopen(out,"wb");
+  // TODO: figure out how to restore dll-bound functions.
+  for(Item i : dfuns) { encode_out(i,o); }
+  fwrite(std::get<0>(dump),sizeof(char),std::get<1>(dump),o); }
+
 // in case vector is needed and all indexing operations must be switched.
 char ind(std::unique_ptr<char[]> dat, int i) { return dat[i]; }
 
@@ -127,7 +153,7 @@ void invoke_mode(Program *prog, Item subj) {
     z+=(SZ);
 
 // DONE: write call function and parse with just queue.
-void read_parse(std::queue<Item> bc, Program *prog) {
+void read_parse(std::queue<Item> bcc, Program *prog) { std::queue<Item> bc = bcc;
   while(!bc.empty()) { invoke_mode(prog,bc.back()); bc.pop(); } }
 
 // DONE: make this less repetitive.
