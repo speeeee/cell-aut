@@ -162,8 +162,7 @@ void rev_mode(Program *a, PuFun pu, PoFun po) { if(a->mode==READ_MODE) { a->mode
 // reminder that `po' is destructive.
 // pushes new scope and quote itself to back for possible recursion.
 // expects READ_MODE
-void f_call(Program *a, PuFun pu, PoFun po) { Item q = po(a);
-  scope(a,pu,po); a->deq.push_front(q); read_parse(po(a).quot,a); destroy_scope(a); }
+void f_call(Program *a, PuFun pu, PoFun po) { read_parse(po(a).quot,a); }
 void d_fun(Program *a, PuFun pu, PoFun po) { dfuns.push_back(po(a)); }
 
 // expects READ_MODE
@@ -240,8 +239,9 @@ void invoke_mode(Program *prog, Item subj) {
     z+=(SZ);
 
 // DONE: write call function and parse with just queue.
-void read_parse(std::deque<Item> bcc, Program *prog) { std::deque<Item> bc = bcc;
-  while(!bc.empty()) { invoke_mode(prog,bc.front()); bc.pop_front(); } }
+void read_parse(std::deque<Item> bcc, Program *prog) { 
+  scope(prog,push,pop); prog->deq.push_front(item(NULL,bcc,QUOT_T,0)); std::deque<Item> bc = bcc;
+  while(!bc.empty()) { invoke_mode(prog,bc.front()); bc.pop_front(); } destroy_scope(prog); }
 
 // DONE: make this less repetitive.
 // DONE: try to use something better than char *.
