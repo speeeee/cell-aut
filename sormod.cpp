@@ -29,16 +29,16 @@
 
 // TODO: change all char to int8_t.
 
-// TODO: create dump function.
+// DONE: create dump function.
 // TODO: create general mode change function.
 
 // use vector if not C++11?
 // DONE: create some kind of destructor for Item.
-typedef struct Item { std::shared_ptr<char> dat; std::queue<struct Item> quot;
+typedef struct Item { std::shared_ptr<char> dat; std::deque<struct Item> quot;
                       int typ; int sz; } Item;
 struct ItemDeleter { void operator()(char *c) { delete[] c; } };
-/*Item item(char *dat, std::queue<Item> quot, int typ, int sz) {
-  return (Item) { dat, quot, typ, sz }; }*/
+Item item(std::shared_ptr<char> dat, std::deque<Item> quot, int typ, int sz) {
+  return (Item) { dat, quot, typ, sz }; }
 //void item_free(Item e) { if(e.dat) { delete e.dat; } /* TODO: destroy queue? */ }
 typedef struct { std::deque<Item> deq; std::stack<int> p_modes; int mode; } Program;
 
@@ -46,6 +46,7 @@ typedef struct { std::deque<Item> deq; std::stack<int> p_modes; int mode; } Prog
 // little endian.
 int dat__int(char *dat) {
   return (dat[3] << 24) | (dat[2] << 16) | (dat[1] << 8) | dat[0]; }
+double dat__flt(char *dat) { return *(double *)dat; }
 
 // TODO: runtime error for attempt to pop empty stack.
 // DONE: function definition using quotes.
@@ -66,17 +67,75 @@ typedef std::function<void(Program *, Item)> PuFun; // push functions based on m
 typedef std::function<Item(Program *)> PoFun; // pop functions based on mode.
 typedef std::function<void(Program *, PuFun, PoFun)> SFun;
 
-#define FSZ 6
+/* == IMPORTANT! this is the amount of pre-loaded functions. == */
+#define FSZ 20
 std::vector<SFun> funs; // functions defined from the start.  also contains functions from
-                        //   DLLs wrapped in a lambda function.
+                        //   DLLs wrapped in a lambda function (unimplemented).
 std::vector<Item> dfuns; // functions defined by user at runtime.  stored as quotes.
 
-void read_parse(std::queue<Item>, Program *);
+void read_parse(std::deque<Item>, Program *);
+
+// TODO: work on standard lib:
+/*     * print_float
+       * print (symbol)
+       * read_char [from stdin for now]
+       * curry
+       * if (true/false are int)
+       * =, <, and >
+       * +, -, *, /, [pow]
+       * float64 -> int32, int32 -> float64
+       * swap, dup, drop, pick */
+
+Item item_ptr(char *a, int t, int sz) {
+  return item(std::shared_ptr<char>(a,std::default_delete<char[]>())
+             ,std::deque<Item>(), t, sz); }
 
 void print_int(Program *a, PuFun pu, PoFun po) {
   printf("%i",dat__int(po(a).dat.get()/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
+void print_flt(Program *a, PuFun pu, PoFun po) {
+  printf("%g",dat__flt(po(a).dat.get())); }
+void print_sym(Program *a, PuFun pu, PoFun po) { } // TODO
+void read_char(Program *a, PuFun pu, PoFun po) { } // TODO
+// same as cons.
+void curry(Program *a, PuFun pu, PoFun po) { Item q = po(a); Item b = po(a);
+  q.quot.push_front(b); pu(a,q); }
+void if_f(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); Item p = po(a);
+  if(dat__int(p.dat.get())) { pu(a,b); } else { pu(a,c); } }
+void eq(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a);
+  if(b.sz==c.sz&&b.sz!=0&&!memcmp(b.dat.get(),c.dat.get(),b.sz)) { pu(a,b); }
+  else { int *e = new int; *e = 0;
+         pu(a,item_ptr((char *)e, WORD_T, 4)); } }
+
+// VERY ugly but unfortunately operators cannot be used directly in macros.  Definitely needs
+//   fixing.
+void add(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); switch(b.typ) {
+  case WORD_T: { int *r = new int; *r = dat__int(c.dat.get())+dat__int(b.dat.get());
+                 pu(a,item_ptr((char *)r, WORD_T, 4)); }
+  case DWORD_T: { double *r = new double; *r = dat__flt(c.dat.get())+dat__flt(b.dat.get());
+                 pu(a,item_ptr((char *)r, DWORD_T, 8)); } } }
+void sub(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); switch(b.typ) {
+  case WORD_T: { int *r = new int; *r = dat__int(c.dat.get())-dat__int(b.dat.get());
+                 pu(a,item_ptr((char *)r, WORD_T, 4)); }
+  case DWORD_T: { double *r = new double; *r = dat__flt(c.dat.get())-dat__flt(b.dat.get());
+                 pu(a,item_ptr((char *)r, DWORD_T, 8)); } } }
+void mul(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); switch(b.typ) {
+  case WORD_T: { int *r = new int; *r = dat__int(c.dat.get())*dat__int(b.dat.get());
+                 pu(a,item_ptr((char *)r, WORD_T, 4)); }
+  case DWORD_T: { double *r = new double; *r = dat__flt(c.dat.get())*dat__flt(b.dat.get());
+                 pu(a,item_ptr((char *)r, DWORD_T, 8)); } } }
+void divi(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); switch(b.typ) {
+  case WORD_T: { int *r = new int; *r = dat__int(c.dat.get())/dat__int(b.dat.get());
+                 pu(a,item_ptr((char *)r, WORD_T, 4)); }
+  case DWORD_T: { double *r = new double; *r = dat__flt(c.dat.get())/dat__flt(b.dat.get());
+                 pu(a,item_ptr((char *)r, DWORD_T, 8)); } } }
+
+void swap(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); pu(a,b); pu(a,c); }
+void dup(Program *a, PuFun pu, PoFun po) { Item b = po(a); pu(a,b); pu(a,b); }
+void drop(Program *a, PuFun pu, PoFun po) { po(a); }
+void pick(Program *a, PuFun pu, PoFun po) { } // TODO
+
 // invoke only in READ_MODE.
-void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::queue<Item>();
+void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::deque<Item>();
   e.typ = QUOT_T; e.sz = 1; pu(a,e); /*a->deq.push_back(e);*/ 
   a->p_modes.push(a->mode); a->mode = QUOT_MODE; }
 void read_mode(Program *a, PuFun pu, PoFun po) { a->mode = READ_MODE; }
@@ -108,8 +167,8 @@ void encode_out(Item f, FILE *o) { switch(f.typ) {
   case DWORD_T: fputc(R_DWORD,o); fwrite(f.dat.get(),sizeof(int64_t),1,o); break;
   case FUN_T: fputc(R_FUN,o); fwrite(f.dat.get(),sizeof(int),1,o); break;
   case QUOT_T: { fputc(R_FUN,o); int a = 1; fwrite(&a,sizeof(int),1,o); int sz = f.quot.size();
-    fwrite(&sz,sizeof(int),1,o); std::queue<Item> bc = f.quot;
-    while(!bc.empty()) { encode_out(bc.back(),o); bc.pop(); }
+    fwrite(&sz,sizeof(int),1,o); std::deque<Item> bc = f.quot;
+    while(!bc.empty()) { encode_out(bc.front(),o); bc.pop_front(); }
     fputc(R_SYM,o); int csz = 1; fwrite(&csz,sizeof(int),1,o); fputc(0x5D,o); break; }
   case SYM_T: fputc(R_SYM,o); fwrite(&f.sz,sizeof(int),1,o);
     fwrite(f.dat.get(),sizeof(char),f.sz,o); break; } }
@@ -142,19 +201,19 @@ void invoke_mode(Program *prog, Item subj) {
                   if(subj.typ==FUN_T&&dat__int(subj.dat.get())==1/*quote_read mode*/) { subj.sz++; }
                   if(subj.typ==SYM_T&&subj.sz==1&&!memcmp(subj.dat.get(),cl_brkt,1)) { subj.sz--; }
                   if(!subj.sz) { prog->mode = prog->p_modes.top(); prog->p_modes.pop(); }
-                  else { prog->deq.back().quot.push(subj); } break; } }
+                  else { prog->deq.back().quot.push_back(subj); } break; } }
 
 // WARNING: do not use outside of read_bytecode due to dependence on bc and z.
 #define IN_TOK(SZ, TYPE) \
     Item p; /*z++*/ char *dat = (new char[SZ]); \
     memcpy(dat,&std::get<0>(bc)[z],(SZ)); \
     p = (Item) { std::shared_ptr<char>(dat,std::default_delete<char[]>()) \
-               , std::queue<Item>(), (TYPE), (SZ) }; \
+               , std::deque<Item>(), (TYPE), (SZ) }; \
     z+=(SZ);
 
 // DONE: write call function and parse with just queue.
-void read_parse(std::queue<Item> bcc, Program *prog) { std::queue<Item> bc = bcc;
-  while(!bc.empty()) { invoke_mode(prog,bc.back()); bc.pop(); } }
+void read_parse(std::deque<Item> bcc, Program *prog) { std::deque<Item> bc = bcc;
+  while(!bc.empty()) { invoke_mode(prog,bc.front()); bc.pop_front(); } }
 
 // DONE: make this less repetitive.
 // DONE: try to use something better than char *.
@@ -166,9 +225,13 @@ void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
     case R_SYM: { int sz; memcpy(&sz,&std::get<0>(bc)[++z],sizeof(int)); z+=sizeof(int);
                   IN_TOK(sz,SYM_T) invoke_mode(prog,p); break; } } } }
 
-int main(int argc, char **argv) { funs.push_back(print_int); funs.push_back(quote_read);
+int main(int argc, char **argv) { /*funs.push_back(print_int); funs.push_back(quote_read);
                                   funs.push_back(f_call); funs.push_back(read_mode);
-                                  funs.push_back(rev_mode); funs.push_back(d_fun);
+                                  funs.push_back(rev_mode); funs.push_back(d_fun);*/
+  SFun fs[] = { print_int,quote_read,f_call,read_mode,rev_mode,d_fun
+              , print_flt,print_sym,read_char,curry,if_f,eq
+              , add,sub,mul,divi,swap,dup,drop,pick };
+  funs = std::vector<SFun>(fs,&fs[FSZ-1]);
   std::tuple<char *,int> bc = readf("test.sm");
                               // test0
                               //std::make_tuple((char[10]){0,4,0,0,0,2,0,0,0,0},10);
