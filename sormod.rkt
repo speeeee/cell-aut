@@ -14,7 +14,12 @@
 (define (bytes-drop x n) (list->bytes (drop (bytes->list x) n)))
 
 (define *FUNS* (list (Function "print-int" 0) (Function "[" 1) (Function "NO_USE" 2)
-                     (Function "^RR" 3) (Function "^<>" 4) (Function "DEFINE" 5)))
+                     (Function "^RR" 3) (Function "^<>" 4) (Function "DEFINE" 5)
+                     (Function "print-flt" 6) (Function "print" 7) (Function "read-char" 8)
+                     (Function "curry" 9) (Function "if" 10) (Function "=" 11)
+                     (Function "+" 12) (Function "-" 13) (Function "*" 14) (Function "/" 15)
+                     (Function "swap" 16) (Function "dup" 17) (Function "drop" 18)
+                     (Function "pick" 19)))
 (define *MAC*
   (list (Macro ":d" (lambda (x) 
     (set! *FUNS* (append *FUNS* (list (Function (bytes->string/latin-1 (bytes-drop (car x) 5)) (length *FUNS*)))))
