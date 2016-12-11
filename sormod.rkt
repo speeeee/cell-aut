@@ -19,7 +19,9 @@
                      (Function "curry" 9) (Function "if" 10) (Function "=" 11)
                      (Function "+" 12) (Function "-" 13) (Function "*" 14) (Function "/" 15)
                      (Function "swap" 16) (Function "dup" 17) (Function "drop" 18)
-                     (Function "pick" 19)))
+                     (Function "pick" 19) (Function "FROM-BACK" 20)
+                     (Function "scope" 21) (Function "=scope?" 22) (Function "recur" 23)
+                     (Function "false" 24)))
 (define *MAC*
   (list (Macro ":d" (lambda (x) 
     (set! *FUNS* (append *FUNS* (list (Function (bytes->string/latin-1 (bytes-drop (car x) 5)) (length *FUNS*)))))

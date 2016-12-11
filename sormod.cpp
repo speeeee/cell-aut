@@ -26,6 +26,9 @@
 
 #define QUOT_T  3
 #define SYM_T   4
+#define SCOPE_T 5
+
+#define FALSE   6
 
 // TODO: change all char to int8_t.
 
@@ -68,7 +71,7 @@ typedef std::function<Item(Program *)> PoFun; // pop functions based on mode.
 typedef std::function<void(Program *, PuFun, PoFun)> SFun;
 
 /* == IMPORTANT! this is the amount of pre-loaded functions. == */
-#define FSZ 20
+#define FSZ 25
 std::vector<SFun> funs; // functions defined from the start.  also contains functions from
                         //   DLLs wrapped in a lambda function (unimplemented).
 std::vector<Item> dfuns; // functions defined by user at runtime.  stored as quotes.
@@ -90,6 +93,9 @@ Item item_ptr(char *a, int t, int sz) {
   return item(std::shared_ptr<char>(a,std::default_delete<char[]>())
              ,std::deque<Item>(), t, sz); }
 
+void push_false(Program *a, PuFun pu, PoFun po) {
+  pu(a,item(NULL,std::deque<Item>(),FALSE,0)); }
+
 void print_int(Program *a, PuFun pu, PoFun po) {
   printf("%i",dat__int(po(a).dat.get()/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
 void print_flt(Program *a, PuFun pu, PoFun po) {
@@ -100,11 +106,11 @@ void read_char(Program *a, PuFun pu, PoFun po) { } // TODO
 void curry(Program *a, PuFun pu, PoFun po) { Item q = po(a); Item b = po(a);
   q.quot.push_front(b); pu(a,q); }
 void if_f(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); Item p = po(a);
-  if(dat__int(p.dat.get())) { pu(a,b); } else { pu(a,c); } }
+  if(p.typ!=FALSE) { pu(a,b); } else { pu(a,c); } }
+// Literals using 'dat' only.
 void eq(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a);
   if(b.sz==c.sz&&b.sz!=0&&!memcmp(b.dat.get(),c.dat.get(),b.sz)) { pu(a,b); }
-  else { int *e = new int; *e = 0;
-         pu(a,item_ptr((char *)e, WORD_T, 4)); } }
+  else { push_false(a,pu,po); } }
 
 // VERY ugly but unfortunately operators cannot be used directly in macros.  Definitely needs
 //   fixing.
@@ -134,16 +140,36 @@ void dup(Program *a, PuFun pu, PoFun po) { Item b = po(a); pu(a,b); pu(a,b); }
 void drop(Program *a, PuFun pu, PoFun po) { po(a); }
 void pick(Program *a, PuFun pu, PoFun po) { } // TODO
 
+void from_back(Program *a, PuFun pu, PoFun po) { Item e = po(a); pu(a,a->deq[dat__int(e.dat.get())]); }
+
+// pushes SCOPE_T to front.
+void scope(Program *a, PuFun pu, PoFun po) {
+  a->deq.push_front(item(NULL,std::deque<Item>(),SCOPE_T,0)); }
+void scope_eq(Program *a, PuFun pu, PoFun po) { Item e = po(a);
+  if(e.typ==SCOPE_T) { pu(a,e); } else { push_false(a,pu,po); } }
+// not included function.
+void destroy_scope(Program *a) { while(a->deq.front().typ!=SCOPE_T) { a->deq.pop_front(); }
+  a->deq.pop_front(); }
+
 // invoke only in READ_MODE.
 void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::deque<Item>();
   e.typ = QUOT_T; e.sz = 1; pu(a,e); /*a->deq.push_back(e);*/ 
   a->p_modes.push(a->mode); a->mode = QUOT_MODE; }
 void read_mode(Program *a, PuFun pu, PoFun po) { a->mode = READ_MODE; }
-void rev_mode(Program *a, PuFun pu, PoFun po) { if(a->mode==READ_MODE) { a->mode = REV_MODE; } 
+// ! WARNING: deprecated.
+void rev_mode(Program *a, PuFun pu, PoFun po) { if(a->mode==READ_MODE) { a->mode = REV_MODE; }
   else { a->mode = READ_MODE; } }
 // reminder that `po' is destructive.
-void f_call(Program *a, PuFun pu, PoFun po) { read_parse(po(a).quot,a); }
+// pushes new scope and quote itself to back for possible recursion.
+// expects READ_MODE
+void f_call(Program *a, PuFun pu, PoFun po) { Item q = po(a);
+  scope(a,pu,po); a->deq.push_front(q); read_parse(po(a).quot,a); destroy_scope(a); }
 void d_fun(Program *a, PuFun pu, PoFun po) { dfuns.push_back(po(a)); }
+
+// expects READ_MODE
+void recur(Program *a, PuFun pu, PoFun po) { int i;
+  for(i = 0;i<a->deq.size()&&a->deq[i].typ!=SCOPE_T;i++);
+  pu(a,a->deq[i-1]); f_call(a,pu,po); }
 
 void push(Program *a, Item subj) { a->deq.push_back(subj); }
 Item pop(Program *a) { Item e = a->deq.back(); a->deq.pop_back(); return e; }
@@ -154,7 +180,7 @@ Item fpop(Program *a) { Item e = a->deq.front(); a->deq.pop_front(); return e; }
 std::tuple<char *, int> readf(const char *in) {
   std::ifstream ii(in, std::ifstream::ate | std::ifstream::binary);
   int len = ii.tellg(); ii.seekg(0,std::ios::beg); char *buf = new char[len]; ii.read(buf,len); 
-  return std::make_tuple(buf,len); }
+  ii.close(); return std::make_tuple(buf,len); }
 
 /*#define WORD_T  0
 #define DWORD_T 1
@@ -193,6 +219,8 @@ void call(Program *prog, Item callee, PuFun pu, PoFun po) {
 void invoke_mode(Program *prog, Item subj) {
   switch(prog->mode) {
   case READ_MODE: call(prog,subj,push,pop); break;
+  // ! WARNING: REV_MODE is no longer supported, and is specifically broken by anything involving
+  //          : scope.
   case REV_MODE: call(prog,subj,fpush,fpop); break;
   case QUOT_MODE: // TODO: make this cleaner.
                   // DONE: allow for embedded quotes.
@@ -230,7 +258,8 @@ int main(int argc, char **argv) { /*funs.push_back(print_int); funs.push_back(qu
                                   funs.push_back(rev_mode); funs.push_back(d_fun);*/
   SFun fs[] = { print_int,quote_read,f_call,read_mode,rev_mode,d_fun
               , print_flt,print_sym,read_char,curry,if_f,eq
-              , add,sub,mul,divi,swap,dup,drop,pick };
+              , add,sub,mul,divi,swap,dup,drop,pick,from_back
+              , scope,scope_eq,recur,push_false };
   funs = std::vector<SFun>(fs,&fs[FSZ-1]);
   std::tuple<char *,int> bc = readf("test.sm");
                               // test0
@@ -246,4 +275,4 @@ int main(int argc, char **argv) { /*funs.push_back(print_int); funs.push_back(qu
                               
   Program *prog = new Program; prog->deq = std::deque<Item>(); prog->p_modes = std::stack<int>();
                                prog->mode = READ_MODE;
-  read_bytecode(bc,prog); /*delete[] std::get<0>(bc);*/ delete prog; return 0; }
+  read_bytecode(bc,prog); delete[] std::get<0>(bc); delete prog; return 0; }
