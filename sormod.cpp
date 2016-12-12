@@ -93,9 +93,12 @@ Item item_ptr(char *a, int t, int sz) {
   return item(std::shared_ptr<char>(a,std::default_delete<char[]>())
              ,std::deque<Item>(), t, sz); }
 
+/* push_false -- pushes the false item to the stack.
+              --  (note, all other values are evaluated as true) */
 void push_false(Program *a, PuFun pu, PoFun po) {
   pu(a,item(NULL,std::deque<Item>(),FALSE,0)); }
 
+/* print_int, print_flt -- standard printing functions. */
 void print_int(Program *a, PuFun pu, PoFun po) {
   printf("%i",dat__int(po(a).dat.get()/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
 void print_flt(Program *a, PuFun pu, PoFun po) {
@@ -103,15 +106,20 @@ void print_flt(Program *a, PuFun pu, PoFun po) {
 void print_sym(Program *a, PuFun pu, PoFun po) { } // TODO
 void read_char(Program *a, PuFun pu, PoFun po) { } // TODO
 // same as cons.
+/* curry -- given a quote at the top and any item below, push item below to the front of quote. */
 void curry(Program *a, PuFun pu, PoFun po) { Item q = po(a); Item b = po(a);
   q.quot.push_front(b); pu(a,q); }
+/* if_f -- if pred then t else f */
 void if_f(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); Item p = po(a);
   if(p.typ!=FALSE) { pu(a,b); } else { pu(a,c); } }
 // Literals using 'dat' only.
+/* eq -- checks if two topmost items are equal by data comparison. */
 void eq(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a);
   if(b.sz==c.sz&&b.sz!=0&&!memcmp(b.dat.get(),c.dat.get(),b.sz)) { pu(a,b); }
   else { push_false(a,pu,po); } }
 
+/* add, sub, mul, divi -- standard arithmetic.  type (int32 or float64) determined by
+                       --   __left__ argument. */
 // VERY ugly but unfortunately operators cannot be used directly in macros.  Definitely needs
 //   fixing.
 void add(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); switch(b.typ) {
@@ -135,6 +143,8 @@ void divi(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); swit
   case DWORD_T: { double *r = new double; *r = dat__flt(c.dat.get())/dat__flt(b.dat.get());
                  pu(a,item_ptr((char *)r, DWORD_T, 8)); } } }
 
+/* swap, dup, drop, pick --
+   ( a b -- b a ), ( a -- a a ), ( a -- ), ( a b c -- a b c a ) respectively. */
 void swap(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); pu(a,b); pu(a,c); }
 void dup(Program *a, PuFun pu, PoFun po) { Item b = po(a); pu(a,b); pu(a,b); }
 void drop(Program *a, PuFun pu, PoFun po) { po(a); }
@@ -143,15 +153,20 @@ void pick(Program *a, PuFun pu, PoFun po) { } // TODO
 void from_back(Program *a, PuFun pu, PoFun po) { Item e = po(a); pu(a,a->deq[dat__int(e.dat.get())]); }
 
 // pushes SCOPE_T to front.
+/* scope -- push scope item to front of stack.  done by read_parse as a way to simulate local scope
+         --   in quotes. */
 void scope(Program *a, PuFun pu, PoFun po) {
   a->deq.push_front(item(NULL,std::deque<Item>(),SCOPE_T,0)); }
+/* scope_eq -- check if topmost item is of type SCOPE_T. */
 void scope_eq(Program *a, PuFun pu, PoFun po) { Item e = po(a);
   if(e.typ==SCOPE_T) { pu(a,e); } else { push_false(a,pu,po); } }
 // not included function.
+/* destroy_scope -- destroys front of stack up to and including scope type. */
 void destroy_scope(Program *a) { while(a->deq.front().typ!=SCOPE_T) { a->deq.pop_front(); }
   a->deq.pop_front(); }
 
 // invoke only in READ_MODE.
+/* quote_read -- pushes new quote to stack and changes mode to QUOT_MODE. */
 void quote_read(Program *a, PuFun pu, PoFun po) { Item e; e.quot = std::deque<Item>();
   e.typ = QUOT_T; e.sz = 1; pu(a,e); /*a->deq.push_back(e);*/ 
   a->p_modes.push(a->mode); a->mode = QUOT_MODE; }
@@ -162,20 +177,26 @@ void rev_mode(Program *a, PuFun pu, PoFun po) { if(a->mode==READ_MODE) { a->mode
 // reminder that `po' is destructive.
 // pushes new scope and quote itself to back for possible recursion.
 // expects READ_MODE
+/* f_call -- calls read_parse on quote at top of stack. */
 void f_call(Program *a, PuFun pu, PoFun po) { read_parse(po(a).quot,a); }
+/* d_fun -- pushes quote at top of stack to function table */
 void d_fun(Program *a, PuFun pu, PoFun po) { dfuns.push_back(po(a)); }
 
 // expects READ_MODE
+/* recur -- brings to front quote stored in scope and calls it. */
 void recur(Program *a, PuFun pu, PoFun po) { int i;
   for(i = 0;i<a->deq.size()&&a->deq[i].typ!=SCOPE_T;i++);
   pu(a,a->deq[i-1]); f_call(a,pu,po); }
 
+/* push, pop, fpush, fpop -- standard stack operations.  f-prefixed operations perform on the
+                          --   opposite side. */
 void push(Program *a, Item subj) { a->deq.push_back(subj); }
 Item pop(Program *a) { Item e = a->deq.back(); a->deq.pop_back(); return e; }
 void fpush(Program *a, Item subj) { a->deq.push_front(subj); }
 Item fpop(Program *a) { Item e = a->deq.front(); a->deq.pop_front(); return e; }
 
 // WARNING: returns newly allocated c-string.
+/* readf -- reads file into (bytestring, size) */
 std::tuple<char *, int> readf(const char *in) {
   std::ifstream ii(in, std::ifstream::ate | std::ifstream::binary);
   int len = ii.tellg(); ii.seekg(0,std::ios::beg); char *buf = new char[len]; ii.read(buf,len); 
@@ -187,6 +208,9 @@ std::tuple<char *, int> readf(const char *in) {
 
 #define QUOT_T  3
 #define SYM_T   4*/
+/* encode_out -- performs the reverse of the decoding done on read_bytecode.
+              -- QUOT_T is handled specially where simply function quote_read ([)
+              --   and symbol ] are pushed, with the encoding of all within the quote in between. */
 void encode_out(Item f, FILE *o) { switch(f.typ) {
   case WORD_T: fputc(R_WORD,o); fwrite(f.dat.get(),sizeof(int),1,o); break;
   case DWORD_T: fputc(R_DWORD,o); fwrite(f.dat.get(),sizeof(int64_t),1,o); break;
@@ -198,6 +222,9 @@ void encode_out(Item f, FILE *o) { switch(f.typ) {
   case SYM_T: fputc(R_SYM,o); fwrite(&f.sz,sizeof(int),1,o);
     fwrite(f.dat.get(),sizeof(char),f.sz,o); break; } }
 
+/* dumpf -- dumps the program in its current state:
+     contents of dump: all function definitions defined at runtime
+                     : all of the contents of the stack */
 void dumpf(std::tuple<char *, int> dump, Program *prog, const char *out) {
   FILE *o = fopen(out,"wb");
   // TODO: figure out how to restore dll-bound functions.
@@ -209,12 +236,20 @@ char ind(std::unique_ptr<char[]> dat, int i) { return dat[i]; }
 
 // NOTE: use std::move when moving data array to struct.
 
+/* call -- if callee is a function (__not__ a quote), it will be called on the stack.
+           else it will be pushed to the stack. */
 void call(Program *prog, Item callee, PuFun pu, PoFun po) {
   if(callee.typ!=FUN_T) { /*prog->deq.push_front*/pu(prog,callee); }
   else { int f = dat__int(callee.dat.get());
          if(f>=FSZ) { read_parse(dfuns.at(f-FSZ).quot,prog); }
          else { (funs.at(f))(prog, pu, po); } } }
 
+/* invoke_mode -- decides what to do with subj by checking the mode.
+               -- it might be possible later to define new modes to functions TODO.
+     cases: READ_MODE -- simply calls call on the stack with Item subj.
+          : REV_MODE  -- reverses the stack. __deprecated__
+          : QUOT_MODE -- will simply push subj to the topmost quote (as pushed by quote_read).
+                      -- embedded quotes will not be evaluated within the quote. */
 void invoke_mode(Program *prog, Item subj) {
   switch(prog->mode) {
   case READ_MODE: call(prog,subj,push,pop); break;
@@ -239,12 +274,29 @@ void invoke_mode(Program *prog, Item subj) {
     z+=(SZ);
 
 // DONE: write call function and parse with just queue.
+/* read_parse -- iterates through quote bcc, where invoke_mode is called for each Item.
+              -- it also pushes a new scope to the __front__ of the stack, where
+              --   that same scope is destroyed after calling the quote.
+              -- after pushing the scope, it will push the quote itself.  This quote
+              -- exists if the user were to call recur (note that the quote is destroyed along with
+              --   the rest of the scope). */
 void read_parse(std::deque<Item> bcc, Program *prog) { 
   scope(prog,push,pop); prog->deq.push_front(item(NULL,bcc,QUOT_T,0)); std::deque<Item> bc = bcc;
   while(!bc.empty()) { invoke_mode(prog,bc.front()); bc.pop_front(); } destroy_scope(prog); }
 
 // DONE: make this less repetitive.
 // DONE: try to use something better than char *.
+/* read_bytecode -- essentially the exact same as read_parse but does not act on any scope and
+                 -- is only usable at the toplevel.  The program will read bytes from a bytestring
+                 -- and based off of the byte read, it will read more and construct an Item to
+                 -- use.
+     cases: R_WORD  -- reads 4 more bytes and stores in an Item of WORD_T.
+          : R_DWORD -- reads 8 bytes and stores in Item of DWORD_T.
+          : R_FUN   -- reads 4 bytes that represent the address of a function from
+                    --   funs (if address < FSZ) or dfuns.  stored in FUN_T.
+                    -- this function is called in READ_MODE.
+          : R_SYM   -- reads 4 bytes to represent size n and reads n more bytes and stores them
+                    --   in Item of SYM_T. */
 void read_bytecode(std::tuple<char *,int> bc, Program *prog) { int z = 0;
   while(z<std::get<1>(bc)) { switch(std::get<0>(bc)[z]) {
     case R_WORD: { z++; IN_TOK(sizeof(int),WORD_T) invoke_mode(prog,p); break; }
