@@ -21,7 +21,7 @@
                      (Function "swap" 16) (Function "dup" 17) (Function "drop" 18)
                      (Function "pick" 19) (Function "FROM-BACK" 20)
                      (Function "scope" 21) (Function "=scope?" 22) (Function "recur" 23)
-                     (Function "false" 24)))
+                     (Function "false" 24) (Function "push-bottom" 25) (Function "stack-empty?" 26)))
 (define *MAC*
   (list (Macro ":d" (lambda (x) 
     (set! *FUNS* (append *FUNS* (list (Function (bytes->string/latin-1 (bytes-drop (car x) 5)) (length *FUNS*)))))

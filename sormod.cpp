@@ -29,6 +29,7 @@
 #define SCOPE_T 5
 
 #define FALSE   6
+#define NOTHING 7
 
 // TODO: change all char to int8_t.
 
@@ -71,7 +72,7 @@ typedef std::function<Item(Program *)> PoFun; // pop functions based on mode.
 typedef std::function<void(Program *, PuFun, PoFun)> SFun;
 
 /* == IMPORTANT! this is the amount of pre-loaded functions. == */
-#define FSZ 25
+#define FSZ 27
 std::vector<SFun> funs; // functions defined from the start.  also contains functions from
                         //   DLLs wrapped in a lambda function (unimplemented).
 std::vector<Item> dfuns; // functions defined by user at runtime.  stored as quotes.
@@ -97,6 +98,9 @@ Item item_ptr(char *a, int t, int sz) {
               --  (note, all other values are evaluated as true) */
 void push_false(Program *a, PuFun pu, PoFun po) {
   pu(a,item(NULL,std::deque<Item>(),FALSE,0)); }
+/* push_bottom -- pops item from top of stack and pushes to bottom of stack. */
+void push_bottom(Program *a, PuFun pu, PoFun po) {
+  Item e = po(a); a->deq.push_front(e); }
 
 /* print_int, print_flt -- standard printing functions. */
 void print_int(Program *a, PuFun pu, PoFun po) {
@@ -116,6 +120,11 @@ void if_f(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a); Item
 /* eq -- checks if two topmost items are equal by data comparison. */
 void eq(Program *a, PuFun pu, PoFun po) { Item b = po(a); Item c = po(a);
   if(b.sz==c.sz&&b.sz!=0&&!memcmp(b.dat.get(),c.dat.get(),b.sz)) { pu(a,b); }
+  else { push_false(a,pu,po); } }
+void stack_empty(Program *a, PuFun pu, PoFun po) {
+  if(a->deq.empty()||a->deq.back().typ==SCOPE_T) { 
+    // NOTE: NOTHING is __not__ false, but a placeholder for true.
+    pu(a,item_ptr(NULL,NOTHING,0)); }
   else { push_false(a,pu,po); } }
 
 /* add, sub, mul, divi -- standard arithmetic.  type (int32 or float64) determined by
@@ -311,7 +320,7 @@ int main(int argc, char **argv) { /*funs.push_back(print_int); funs.push_back(qu
   SFun fs[] = { print_int,quote_read,f_call,read_mode,rev_mode,d_fun
               , print_flt,print_sym,read_char,curry,if_f,eq
               , add,sub,mul,divi,swap,dup,drop,pick,from_back
-              , scope,scope_eq,recur,push_false };
+              , scope,scope_eq,recur,push_false,push_bottom,stack_empty };
   funs = std::vector<SFun>(fs,&fs[FSZ-1]);
   std::tuple<char *,int> bc = readf("test.sm");
                               // test0
