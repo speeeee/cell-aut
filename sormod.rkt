@@ -33,13 +33,13 @@
                      (Function "scope" 21) (Function "=scope?" 22) (Function "recur" 23)
                      (Function "false" 24) (Function "push-bottom" 25) (Function "stack-empty?" 26)))
 (define *MAC*
-  (list (Macro ":d" (lambda (x) 
+  (list (Macro ":d" (lambda (x out)
     (set! *FUNS* (append *FUNS* (list (Function (symbolize (car x)) (length *FUNS*)))))
     (cons (bytes 2 5 0 0 0) (cdr x))))
 
-    (Macro "import" (lambda (x) (let ([a (symbolize (car x))])
+    (Macro "import" (lambda (x out) (let ([a (symbolize (car x))])
        (if (member a *IMP*) (cdr x)
-          (begin (set! *IMP* (cons a *IMP*)) (out-parse! (string-join (file->lines a)))
+          (begin (set! *IMP* (cons a *IMP*)) (out-parse! (string-join (file->lines a)) out)
                  (cdr x))))))))
 
 ; tokenize : string -> (any, type)
@@ -53,11 +53,11 @@
      (Literal a 'macro))]
   [else (Literal x 'sym)])) in))
 
-; parse : (any, type) -> [byte-string]
-(define (parse e) (foldl (lambda (x n) (case (Literal-type x)
+; parse : (any, type) -> file -> [byte-string]
+(define (parse e out) (foldl (lambda (x n) (case (Literal-type x)
   [(int32) (cons (bytes-append (bytes 0) (integer->integer-bytes (Literal-val x) 4 #t)) n)]
   [(float64) (cons (bytes-append (bytes 1) (real->floating-point-bytes (Literal-val x) 8 #t)) n)]
-  [(macro) ((Macro-f (Literal-val x)) n)]
+  [(macro) ((Macro-f (Literal-val x)) n out)]
   ; make following less repetitive.
   [(fun) (cons (bytes-append (bytes 2) (integer->integer-bytes (Function-id (Literal-val x)) 4 #t)) n)]
   [else (if (member (Literal-val x) (map Function-name *FUNS*))
@@ -66,13 +66,13 @@
             (cons (bytes-append (bytes 3) (integer->integer-bytes (string-length (Literal-val x)) 4 #f)
                                 (string->bytes/latin-1 (Literal-val x))) n))])) '() e))
 
-(define (out-parse! in)
-  (map (lambda (x) (write-bytes x *OUT*)) (reverse (parse (tokenize (string-split in))))))
+(define (out-parse! in out)
+  (map (lambda (x) (write-bytes x out)) (reverse (parse (tokenize (string-split in)) out))))
 
 (define (main)
   (let* ([args (vector->list (current-command-line-arguments))] #| 2 |#
-         [in (string-join (file->lines (cadr args)))])
-    (set! *OUT* (open-output-file (car args) #:exists 'replace))
-    (out-parse! in) (close-output-port *OUT*)))
+         [in (string-join (file->lines (cadr args)))]
+         [out (open-output-file (car args) #:exists 'replace)])
+    (out-parse! in out) (close-output-port out)))
 
 (main)
