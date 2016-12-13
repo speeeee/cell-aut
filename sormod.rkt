@@ -1,18 +1,28 @@
 #lang racket
 (provide (all-defined-out))
 
-; TODO: very messy implementation so far; needs to be cleaned up.
+; TODO: __very__ messy implementation so far; needs to be cleaned up.
 
 ; convert input program split by whitespace to bytecode w/ symboltable.
 
 ; program for creating the image of a program.
+
+; TODO: allow file imports (all written to same output image).
+; NOTE: unfortunately, for right now this compiles imported files almost the same as C
+;     : does, in that it just copies the definitions into the output file.
+;     : however, there will be checks for double-imports, so there is no need for manual checking of
+;     : that.
 
 (struct Literal (val type) #:transparent)
 (struct Function (name id) #:transparent)
 (struct Macro (name f))
 
 (define (bytes-drop x n) (list->bytes (drop (bytes->list x) n)))
+(define (symbolize x) (bytes->string/latin-1 (bytes-drop x 5)))
 
+(define *OUT* '())
+
+(define *IMP* '())
 (define *FUNS* (list (Function "print-int" 0) (Function "[" 1) (Function "NO_USE" 2)
                      (Function "^RR" 3) (Function "^<>" 4) (Function "DEFINE" 5)
                      (Function "print-flt" 6) (Function "print" 7) (Function "read-char" 8)
@@ -24,8 +34,13 @@
                      (Function "false" 24) (Function "push-bottom" 25) (Function "stack-empty?" 26)))
 (define *MAC*
   (list (Macro ":d" (lambda (x) 
-    (set! *FUNS* (append *FUNS* (list (Function (bytes->string/latin-1 (bytes-drop (car x) 5)) (length *FUNS*)))))
-    (cons (bytes 2 5 0 0 0) (cdr x))))))
+    (set! *FUNS* (append *FUNS* (list (Function (symbolize (car x)) (length *FUNS*)))))
+    (cons (bytes 2 5 0 0 0) (cdr x))))
+
+    (Macro "import" (lambda (x) (let ([a (symbolize (car x))])
+       (if (member a *IMP*) (cdr x)
+          (begin (set! *IMP* (cons a *IMP*)) (out-parse! (string-join (file->lines a)))
+                 (cdr x))))))))
 
 ; tokenize : string -> (any, type)
 ; very simple one-to-one bytecode converter.
@@ -51,11 +66,13 @@
             (cons (bytes-append (bytes 3) (integer->integer-bytes (string-length (Literal-val x)) 4 #f)
                                 (string->bytes/latin-1 (Literal-val x))) n))])) '() e))
 
+(define (out-parse! in)
+  (map (lambda (x) (write-bytes x *OUT*)) (reverse (parse (tokenize (string-split in))))))
+
 (define (main)
   (let* ([args (vector->list (current-command-line-arguments))] #| 2 |#
-         [in (string-join (file->lines (cadr args)))]
-         [out (open-output-file (car args) #:exists 'replace)])
-    (map (lambda (x) (write-bytes x out)) (reverse (parse (tokenize (string-split in)))))
-    (close-output-port out)))
+         [in (string-join (file->lines (cadr args)))])
+    (set! *OUT* (open-output-file (car args) #:exists 'replace))
+    (out-parse! in) (close-output-port *OUT*)))
 
 (main)
