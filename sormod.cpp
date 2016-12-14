@@ -72,7 +72,7 @@ typedef std::function<Item(Program *)> PoFun; // pop functions based on mode.
 typedef std::function<void(Program *, PuFun, PoFun)> SFun;
 
 /* == IMPORTANT! this is the amount of pre-loaded functions. == */
-#define FSZ 27
+#define FSZ 30
 std::vector<SFun> funs; // functions defined from the start.  also contains functions from
                         //   DLLs wrapped in a lambda function (unimplemented).
 std::vector<Item> dfuns; // functions defined by user at runtime.  stored as quotes.
@@ -107,7 +107,8 @@ void print_int(Program *a, PuFun pu, PoFun po) {
   printf("%i",dat__int(po(a).dat.get()/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
 void print_flt(Program *a, PuFun pu, PoFun po) {
   printf("%g",dat__flt(po(a).dat.get())); }
-// WARNING: binary print. use print_int/print_flt for numbers.
+// WARNING: binary print. use print_int/print_flt for numbers unless explicitly desired to print
+//        :   numbers in binary.  this prints in ASCII.
 void print_sym(Program *a, PuFun pu, PoFun po) { Item e = po(a);
   fwrite(e.dat.get(),e.sz,1,stdout); }
 void read_char(Program *a, PuFun pu, PoFun po) { int *in = new int; *in = getchar();
@@ -176,6 +177,13 @@ void scope_eq(Program *a, PuFun pu, PoFun po) { Item e = po(a);
 /* destroy_scope -- destroys front of stack up to and including scope type. */
 void destroy_scope(Program *a) { while(a->deq.front().typ!=SCOPE_T) { a->deq.pop_front(); }
   a->deq.pop_front(); }
+
+void int_eq(Program *a, PuFun pu, PoFun po) { Item e = po(a);
+  if(e.typ==WORD_T) { pu(a,item_ptr(NULL,NOTHING,0)); } else { push_false(a,pu,po); } }
+void flt_eq(Program *a, PuFun pu, PoFun po) { Item e = po(a);
+  if(e.typ==DWORD_T) { pu(a,item_ptr(NULL,NOTHING,0)); } else { push_false(a,pu,po); } }
+void sym_eq(Program *a, PuFun pu, PoFun po) { Item e = po(a);
+  if(e.typ==SYM_T) { pu(a,item_ptr(NULL,NOTHING,0)); } else { push_false(a,pu,po); } }
 
 // invoke only in READ_MODE.
 /* quote_read -- pushes new quote to stack and changes mode to QUOT_MODE. */
@@ -323,7 +331,8 @@ int main(int argc, char **argv) { /*funs.push_back(print_int); funs.push_back(qu
   SFun fs[] = { print_int,quote_read,f_call,read_mode,rev_mode,d_fun
               , print_flt,print_sym,read_char,curry,if_f,eq
               , add,sub,mul,divi,swap,dup,drop,pick,from_back
-              , scope,scope_eq,recur,push_false,push_bottom,stack_empty };
+              , scope,scope_eq,recur,push_false,push_bottom,stack_empty
+              , int_eq,flt_eq,sym_eq };
   funs = std::vector<SFun>(fs,&fs[FSZ-1]);
   std::tuple<char *,int> bc = readf("test.sm");
                               // test0

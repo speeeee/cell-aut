@@ -23,7 +23,7 @@
 (define *OUT* '())
 
 (define *IMP* '())
-(define *FUNS* (list (Function "print-int" 0) (Function "[" 1) (Function "NO_USE" 2)
+(define *FUNS* (list (Function "print-int" 0) (Function "[" 1) (Function "call" 2)
                      (Function "^RR" 3) (Function "^<>" 4) (Function "DEFINE" 5)
                      (Function "print-flt" 6) (Function "print" 7) (Function "read-char" 8)
                      (Function "curry" 9) (Function "if" 10) (Function "=" 11)
@@ -31,11 +31,12 @@
                      (Function "swap" 16) (Function "dup" 17) (Function "drop" 18)
                      (Function "pick" 19) (Function "FROM-BACK" 20)
                      (Function "scope" 21) (Function "=scope?" 22) (Function "recur" 23)
-                     (Function "false" 24) (Function "push-bottom" 25) (Function "stack-empty?" 26)))
+                     (Function "false" 24) (Function "push-bottom" 25) (Function "stack-empty?" 26)
+                     (Function "int?" 27) (Function "float?" 28) (Function "symbol?" 29)))
 (define *MAC*
   (list (Macro ":d" (lambda (x out)
-    (set! *FUNS* (append *FUNS* (list (Function (symbolize (car x)) (length *FUNS*)))))
-    (cons (bytes 2 5 0 0 0) (cdr x))))
+      (set! *FUNS* (append *FUNS* (list (Function (symbolize (car x)) (length *FUNS*)))))
+      (cons (bytes 2 5 0 0 0) (cdr x))))
 
     (Macro "import" (lambda (x out) (let ([a (symbolize (car x))])
        (if (member a *IMP*) (cdr x)
