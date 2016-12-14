@@ -107,8 +107,11 @@ void print_int(Program *a, PuFun pu, PoFun po) {
   printf("%i",dat__int(po(a).dat.get()/*a->deq.back().dat*/)); /*a->deq.pop_back();*/ }
 void print_flt(Program *a, PuFun pu, PoFun po) {
   printf("%g",dat__flt(po(a).dat.get())); }
-void print_sym(Program *a, PuFun pu, PoFun po) { } // TODO
-void read_char(Program *a, PuFun pu, PoFun po) { } // TODO
+// WARNING: binary print. use print_int/print_flt for numbers.
+void print_sym(Program *a, PuFun pu, PoFun po) { Item e = po(a);
+  fwrite(e.dat.get(),e.sz,1,stdout); }
+void read_char(Program *a, PuFun pu, PoFun po) { int *in = new int; *in = getchar();
+  pu(a,item_ptr((char *)in,WORD_T,4)); }
 // same as cons.
 /* curry -- given a quote at the top and any item below, push item below to the front of quote. */
 void curry(Program *a, PuFun pu, PoFun po) { Item q = po(a); Item b = po(a);
