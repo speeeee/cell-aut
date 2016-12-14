@@ -39,7 +39,7 @@
 
     (Macro "import" (lambda (x out) (let ([a (symbolize (car x))])
        (if (member a *IMP*) (cdr x)
-          (begin (set! *IMP* (cons a *IMP*)) (out-parse! (string-join (file->lines a)) out)
+          (begin (set! *IMP* (cons a *IMP*)) (out-parse! (in-file a) out)
                  (cdr x))))))))
 
 ; tokenize : string -> (any, type)
@@ -66,12 +66,18 @@
             (cons (bytes-append (bytes 3) (integer->integer-bytes (string-length (Literal-val x)) 4 #f)
                                 (string->bytes/latin-1 (Literal-val x))) n))])) '() e))
 
+; nested comments are possible.
+(define (uncomment strl o c) (car (foldr (lambda (x n) (cond
+  [(equal? x o) (list (car n) (+ (cadr n) 1))]
+  [(equal? x c) (list (car n) (- (cadr n) 1))]
+  [else (list (if (= (cadr n) 0) (cons x (car n)) n) (cadr n))])) '(() 0) strl)))
+(define (in-file str) (uncomment (string-split (string-join (file->lines str))) "~#" "#~"))
 (define (out-parse! in out)
-  (map (lambda (x) (write-bytes x out)) (reverse (parse (tokenize (string-split in)) out))))
+  (map (lambda (x) (write-bytes x out)) (reverse (parse (tokenize in) out))))
 
 (define (main)
   (let* ([args (vector->list (current-command-line-arguments))] #| 2 |#
-         [in (string-join (file->lines (cadr args)))]
+         [in (in-file (cadr args))]
          [out (open-output-file (car args) #:exists 'replace)])
     (out-parse! in out) (close-output-port out)))
 
